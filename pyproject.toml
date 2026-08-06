@@ -1,0 +1,17 @@
+[project]
+name = "sistema-autenticacao-django-rest"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [{ name = "Ian Matheus Veiga", email = "ianmatheusv54@gmail.com" }]
+dependencies = []
+requires-python = ">=3.14"
+readme = "README.md"
+license = { text = "MIT" }
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.pdm]
+distribution = true
