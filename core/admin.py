@@ -1,12 +1,13 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as UserAdminFromDjango
-from core.models import User
 
-# Register your models here.
+from core.models import User
 
 
 @admin.register(User)
 class UserAdmin(UserAdminFromDjango):
+    """Configurações do painel de administração do usuário."""
+
     ordering = None
 
     list_display = (

@@ -1,0 +1,11 @@
+[MASTER]
+load-plugins=pylint_django
+django-settings-module=app.settings
+ignore-paths=^.*/migrations/.*$
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    import-outside-toplevel
