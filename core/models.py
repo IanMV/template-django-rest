@@ -6,7 +6,6 @@ from django.contrib.auth.models import (
     PermissionsMixin,
 )
 from django.db import models
-from django.utils.timezone import now
 
 
 class UserManager(BaseUserManager):
@@ -71,14 +70,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     created_at = models.DateTimeField(
-        auto_now_add=now(),
+        auto_now_add=True,
     )
 
     USERNAME_FIELD = "email"
 
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS: list[str] = []
 
-    objects = UserManager()
+    objects: UserManager = UserManager()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.email

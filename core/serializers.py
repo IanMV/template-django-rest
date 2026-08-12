@@ -31,7 +31,7 @@ class UserCreateSerializer(BaseUserSerializer):
         return value
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        return User.objects.create_user(**validated_data)  # type: ignore[reportAttributeAccessIssue]
 
 
 class UserPatchSerializer(BaseUserSerializer):
