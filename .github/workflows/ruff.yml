@@ -1,4 +1,4 @@
-name: Django & Pylint CI
+name: Django & Ruff CI
 
 on: [push, pull_request]
 
@@ -21,12 +21,12 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pdm install
+        pdm install -G lint
 
     - name: Run Django System Checks
       run: |
         pdm run python manage.py check
 
-    - name: Analysing the code with pylint
+    - name: Analysing the code with ruff
       run: |
-        pdm run pylint $(git ls-files '*.py')
+        pdm run ruff check
