@@ -8,8 +8,19 @@ requires-python = ">=3.14"
 readme = "README.md"
 license = { text = "MIT" }
 
-[project.optional-dependencies]
-dev = ["pylint-django>=2.8.0"]
+[dependency-groups]
+dev = [
+    "ruff>=0.16.2",
+    "pyright>=1.1.411",
+    "pre-commit>=4.6.2",
+]
+lint = [
+    "ruff>=0.16.2",
+]
+types = [
+    "pyright>=1.1.411",
+    "django-stubs>=6.0.9",
+]
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -18,3 +29,12 @@ build-backend = "setuptools.build_meta"
 
 [tool.pdm]
 distribution = false
+
+[tool.ruff]
+exclude = ["migrations"]
+lint.select = ["F", "DJ", "I"]
+
+[tool.pyright]
+exclude = ["**/__pycache__", "**/.venv", "**/migrations"]
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
