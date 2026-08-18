@@ -12,7 +12,9 @@ User = get_user_model()
 
 class UserViewSet(ModelViewSet):
     queryset = User.objects.all()
-    permission_classes = AllowAny
+    permission_classes = [
+        AllowAny,
+    ]
 
     def get_serializer_class(self):
         if self.action in ("retrieve", "list"):
