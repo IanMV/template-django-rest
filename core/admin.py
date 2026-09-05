@@ -1,12 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as UserAdminFromDjango
 
-from core.models import User
+from core.models import OneTimeCode, User
 
 
 @admin.register(User)
 class UserAdmin(UserAdminFromDjango):
-    """Configurações do painel de administração do usuário."""
+    """User administration panel"""
 
     ordering = None
 
@@ -74,9 +74,6 @@ class UserAdmin(UserAdminFromDjango):
         (
             "Required",
             {
-                "classes": [
-                    "collapse",
-                ],
                 "fields": (
                     "email",
                     "password1",
@@ -98,3 +95,11 @@ class UserAdmin(UserAdminFromDjango):
             },
         ),
     )
+
+
+@admin.register(OneTimeCode)
+class OneTimeCodeAdmin(admin.ModelAdmin):
+    list_display = ["user", "created_at", "expires_at", "used", "used_at"]
+    list_filter = ["used"]
+    search_fields = ["user__email"]
+    readonly_fields = ["code", "created_at", "used_at"]
