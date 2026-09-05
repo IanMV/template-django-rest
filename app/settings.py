@@ -136,4 +136,104 @@ MAILERS = {
     },
 }
 
+# DEFAULT_FROM_EMAIL = "webmaster@localhost"
+
+DEFAULT_INDEX_TABLESPACE = ""
+
+DEFAULT_TABLESPACE = ""
+
+DISALLOWED_USER_AGENTS = []
+
+# EMAIL_FILE_PATH
+
+# EMAIL_HOST =
+
 AUTH_USER_MODEL = "core.User"
+
+ADMINS = []
+
+ALLOWED_HOSTS = []
+
+APPEND_SLASH = True
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
+CACHE_MIDDLEWARE_ALIAS = "default"
+
+CACHE_MIDDLEWARE_KEY_PREFIX = ""
+
+CACHE_MIDDLEWARE_SECONDS = 600
+
+CSRF_COOKIE_AGE = 31449600
+
+CSRF_COOKIE_DOMAIN = None
+
+CSRF_COOKIE_HTTPONLY = False
+
+CSRF_COOKIE_NAME = "csrftoken"
+
+CSRF_COOKIE_PATH = "/"
+
+CSRF_COOKIE_SAMESITE = "Lax"
+
+CSRF_COOKIE_SECURE = False
+
+CSRF_USE_SESSIONS = False
+
+CSRF_FAILURE_VIEW = "django.views.csrf.csrf_failure"
+
+CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
+
+CSRF_TRUSTED_ORIGINS = []
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2621440
+
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000
+
+DATA_UPLOAD_MAX_NUMBER_FILES = 100
+
+DATABASE_ROUTERS = []
+
+DATE_FORMAT = "N j, Y"
+
+DATE_INPUT_FORMATS = [
+    "%Y-%m-%d",  # '2006-10-25'
+    "%m/%d/%Y",  # '10/25/2006'
+    "%m/%d/%y",  # '10/25/06'
+    "%b %d %Y",  # 'Oct 25 2006'
+    "%b %d, %Y",  # 'Oct 25, 2006'
+    "%d %b %Y",  # '25 Oct 2006'
+    "%d %b, %Y",  # '25 Oct, 2006'
+    "%B %d %Y",  # 'October 25 2006'
+    "%B %d, %Y",  # 'October 25, 2006'
+    "%d %B %Y",  # '25 October 2006'
+    "%d %B, %Y",  # '25 October, 2006'
+]
+
+DATETIME_FORMAT = "N j, Y, P"
+
+DATETIME_INPUT_FORMATS = [
+    "%Y-%m-%d %H:%M:%S",  # '2006-10-25 14:30:59'
+    "%Y-%m-%d %H:%M:%S.%f",  # '2006-10-25 14:30:59.000200'
+    "%Y-%m-%d %H:%M",  # '2006-10-25 14:30'
+    "%m/%d/%Y %H:%M:%S",  # '10/25/2006 14:30:59'
+    "%m/%d/%Y %H:%M:%S.%f",  # '10/25/2006 14:30:59.000200'
+    "%m/%d/%Y %H:%M",  # '10/25/2006 14:30'
+    "%m/%d/%y %H:%M:%S",  # '10/25/06 14:30:59'
+    "%m/%d/%y %H:%M:%S.%f",  # '10/25/06 14:30:59.000200'
+    "%m/%d/%y %H:%M",  # '10/25/06 14:30'
+]
+
+DEBUG_PROPAGATE_EXCEPTIONS = False
+
+DECIMAL_SEPARATOR = "."
+
+# DEFAULT_AUTO_FIELD
+
+DEFAULT_CHARSET = "utf-8"
+
+DEFAULT_EXCEPTION_REPOR = "django.views.debug.ExceptionReporter"
