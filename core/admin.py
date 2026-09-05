@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as UserAdminFromDjango
 
-from core.models import OneTimeCode, User
+from core.models import User
 
 
 @admin.register(User)
@@ -95,11 +95,3 @@ class UserAdmin(UserAdminFromDjango):
             },
         ),
     )
-
-
-@admin.register(OneTimeCode)
-class OneTimeCodeAdmin(admin.ModelAdmin):
-    list_display = ["user", "created_at", "expires_at", "used", "used_at"]
-    list_filter = ["used"]
-    search_fields = ["user__email"]
-    readonly_fields = ["code", "created_at", "used_at"]
