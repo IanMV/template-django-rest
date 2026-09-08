@@ -1,42 +1,57 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as UserAdminFromDjango
+from django.utils.translation import gettext_lazy as _
 
-from core.models import User
+from core.models import EmailChange, EmailVerification, PasswordReset, User
+
+
+class NoAddModelAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(User)
 class UserAdmin(UserAdminFromDjango):
-    """User administration panel"""
-
-    ordering = None
+    ordering = ("-created_at",)
 
     list_display = (
         "email",
+        "name",
         "is_active",
         "is_staff",
         "is_superuser",
+        "created_at",
     )
 
     search_fields = (
+        "name",
         "email",
         "groups__name",
         "user_permissions__name",
         "user_permissions__codename",
     )
 
+    readonly_fields = (
+        "id",
+        "last_login",
+        "created_at",
+        "updated_at",
+    )
+
     fieldsets = (
         (
-            "Authentication",
+            _("Identification"),
             {
                 "fields": (
+                    "id",
+                    "name",
                     "email",
                     "password",
-                    "id",
                 )
             },
         ),
         (
-            "Permissions",
+            _("Permissions"),
             {
                 "fields": (
                     "is_active",
@@ -46,48 +61,19 @@ class UserAdmin(UserAdminFromDjango):
             },
         ),
         (
-            "Important dates",
+            _("Important dates"),
             {
                 "fields": (
                     "last_login",
                     "created_at",
+                    "updated_at",
                 )
             },
         ),
         (
-            "Groups",
-            {"fields": ("groups",)},
-        ),
-        (
-            "User Permissions",
-            {"fields": ("user_permissions",)},
-        ),
-    )
-
-    readonly_fields = (
-        "last_login",
-        "id",
-        "created_at",
-    )
-
-    add_fieldsets = (
-        (
-            "Required",
+            _("Groups & Permissions"),
             {
-                "fields": (
-                    "email",
-                    "password1",
-                    "password2",
-                    "is_active",
-                    "is_staff",
-                    "is_superuser",
-                ),
-            },
-        ),
-        (
-            "Optional",
-            {
-                "classes": ["collapse"],
+                "classes": ("collapse",),
                 "fields": (
                     "groups",
                     "user_permissions",
@@ -95,3 +81,116 @@ class UserAdmin(UserAdminFromDjango):
             },
         ),
     )
+
+
+class OneTimeCodeAdmin(NoAddModelAdmin):
+    list_display = (
+        "user",
+        "attempts",
+        "used",
+        "created_at",
+        "expires_at",
+    )
+
+    readonly_fields = (
+        "id",
+        "user",
+        "used",
+        "used_at",
+        "attempts",
+        "created_at",
+        "expires_at",
+    )
+
+    fieldsets = (
+        (
+            _("User Info"),
+            {
+                "fields": (
+                    "id",
+                    "user",
+                )
+            },
+        ),
+        (
+            _("Usage Status"),
+            {
+                "fields": (
+                    "used",
+                    "used_at",
+                    "attempts",
+                )
+            },
+        ),
+        (
+            _("Validity Dates"),
+            {
+                "fields": (
+                    "created_at",
+                    "expires_at",
+                )
+            },
+        ),
+    )
+
+    search_fields = (
+        "user__email",
+        "user__name",
+    )
+
+
+@admin.register(EmailVerification)
+class EmailVerificationAdmin(OneTimeCodeAdmin):
+    pass
+
+
+@admin.register(PasswordReset)
+class PasswordResetAdmin(OneTimeCodeAdmin):
+    pass
+
+
+@admin.register(EmailChange)
+class EmailChangeAdmin(OneTimeCodeAdmin):
+    list_display = (
+        "user",
+        "new_email",
+        "attempts",
+        "used",
+        "created_at",
+    )
+
+    readonly_fields = OneTimeCodeAdmin.readonly_fields + ("new_email",)
+
+    fieldsets = (
+        (
+            _("User Info"),
+            {
+                "fields": (
+                    "id",
+                    "user",
+                    "new_email",
+                )
+            },
+        ),
+        (
+            _("Usage Status"),
+            {
+                "fields": (
+                    "used",
+                    "used_at",
+                    "attempts",
+                )
+            },
+        ),
+        (
+            _("Validity Dates"),
+            {
+                "fields": (
+                    "created_at",
+                    "expires_at",
+                )
+            },
+        ),
+    )
+
+    search_fields = OneTimeCodeAdmin.search_fields + ("new_email",)
