@@ -108,3 +108,13 @@ class LoginSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     pass
+
+
+class EmailVerificationConfirmSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    code = serializers.CharField(max_length=6, required=True)
+
+
+class EmailVerificationVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    code = serializers.CharField(max_length=6, required=True)

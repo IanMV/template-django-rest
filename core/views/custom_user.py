@@ -11,12 +11,15 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from core.models.email_change import EmailChange
+from core.models.email_verification import EmailVerification
 from core.models.password_reset import PasswordReset
 from core.permissions.is_user import IsUserOwner
 from core.serializers.custom_user import (
     EmailChangeConfirmSerializer,
     EmailChangeRequestSerializer,
     EmailChangeVerifySerializer,
+    EmailVerificationConfirmSerializer,
+    EmailVerificationVerifySerializer,
     LoginSerializer,
     LogoutSerializer,
     PasswordResetConfirmSerializer,
@@ -41,6 +44,8 @@ class UserViewSet(ModelViewSet):
             "password_reset_request",
             "password_reset_confirm",
             "password_reset_verify",
+            "email_verification_confirm",
+            "email_verification_verify",
             "login",
         }:
             permission_classes = [AllowAny]
@@ -53,6 +58,8 @@ class UserViewSet(ModelViewSet):
             "retrieve": UserListRetrieveSerializer,
             "list": UserListRetrieveSerializer,
             "create": UserCreateSerializer,
+            "email_verification_confirm": EmailVerificationConfirmSerializer,
+            "email_verification_verify": EmailVerificationVerifySerializer,
             "partial_update": UserPatchSerializer,
             "password_reset_request": PasswordResetRequestSerializer,
             "password_reset_confirm": PasswordResetConfirmSerializer,
@@ -271,3 +278,61 @@ class UserViewSet(ModelViewSet):
     def logout(self, request):
         logout(request)
         return Response({"detail": "Successful logout."})
+
+    @extend_schema(description="Confirm e-mail and activate user account")
+    @action(detail=False, methods=["post"])
+    def email_verification_confirm(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["code"]
+
+        user = User.objects.filter(email=email).first()
+        verification = (
+            EmailVerification.objects.filter(user=user).first() if user else None
+        )
+
+        if not verification:
+            return Response(
+                {"detail": "No verification request found for this user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not verification.verify(code):
+            return Response(
+                {"detail": "Invalid or expired code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.is_active = True
+        user.save(update_fields=["is_active", "updated_at"])
+        verification.mark_used()
+
+        return Response(
+            {"detail": "Account successfully activated."}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(description="Verify registration e-mail code")
+    @action(detail=False, methods=["post"])
+    def email_verification_verify(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["code"]
+
+        user = User.objects.filter(email=email).first()
+        verification = (
+            EmailVerification.objects.filter(user=user).first() if user else None
+        )
+
+        if not verification:
+            return Response(
+                {"detail": "No verification request found for this user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not verification.verify(code):
+            return Response(
+                {"detail": "Invalid or expired code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({"detail": "Valid code."}, status=status.HTTP_200_OK)
