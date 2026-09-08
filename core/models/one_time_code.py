@@ -1,34 +1,58 @@
-"""Shared base for the 6-digit codes emailed for verification and password reset."""
-
 from datetime import timedelta
+from typing import ClassVar
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 CODE_LIFETIME = timedelta(minutes=15)
 MAX_ATTEMPTS = 5
 
 
-def default_expiry():
+def default_expiry() -> timezone.datetime:
     return timezone.now() + CODE_LIFETIME
 
 
 class OneTimeCode(models.Model):
-    """A hashed, expiring, single-use code belonging to one user."""
+    CODE_LIFETIME: ClassVar[timedelta] = CODE_LIFETIME
+    MAX_ATTEMPTS: ClassVar[int] = MAX_ATTEMPTS
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="%(class)s",
+        verbose_name=_("user"),
     )
-    code = models.CharField(max_length=128)
-    used = models.BooleanField(default=False)
-    used_at = models.DateTimeField(null=True, blank=True)
-    attempts = models.PositiveSmallIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(default=default_expiry)
+    code = models.CharField(
+        _("hashed code"),
+        max_length=128,
+    )
+    used = models.BooleanField(
+        _("used"),
+        default=False,
+        db_index=True,
+    )
+    used_at = models.DateTimeField(
+        _("used at"),
+        null=True,
+        blank=True,
+    )
+    attempts = models.PositiveSmallIntegerField(
+        _("attempts"),
+        default=0,
+    )
+    created_at = models.DateTimeField(
+        _("created at"),
+        auto_now_add=True,
+        db_index=True,
+    )
+    expires_at = models.DateTimeField(
+        _("expires at"),
+        default=default_expiry,
+        db_index=True,
+    )
 
     class Meta:
         abstract = True
@@ -46,21 +70,24 @@ class OneTimeCode(models.Model):
         self.save(update_fields=["used", "used_at"])
 
     def register_failure(self):
-        """
-        Count a wrong guess, and burn the code once MAX_ATTEMPTS is reached.
+        type(self).objects.filter(pk=self.pk).update(attempts=models.F("attempts") + 1)
+        self.refresh_from_db(fields=["attempts"])
 
-        The per-IP throttle does not stop the same code being guessed from many
-        addresses at once; this does. Returns True if the code was burned.
-        """
-        self.attempts += 1
-        exhausted = self.attempts >= MAX_ATTEMPTS
+        exhausted = self.attempts >= self.MAX_ATTEMPTS
+        if exhausted and not self.used:
+            self.mark_used()
 
-        if exhausted:
-            self.used = True
-            self.used_at = timezone.now()
-
-        self.save(update_fields=["attempts", "used", "used_at"])
         return exhausted
+
+    def verify(self, raw_code):
+        if not self.is_valid:
+            return False
+
+        if not self.check_code(raw_code):
+            self.register_failure()
+            return False
+
+        return True
 
     @property
     def is_expired(self):
@@ -68,7 +95,7 @@ class OneTimeCode(models.Model):
 
     @property
     def is_exhausted(self):
-        return self.attempts >= MAX_ATTEMPTS
+        return self.attempts >= self.MAX_ATTEMPTS
 
     @property
     def is_valid(self):

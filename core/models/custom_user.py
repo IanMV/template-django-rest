@@ -6,6 +6,7 @@ from django.contrib.auth.models import (
     PermissionsMixin,
 )
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class UserManager(BaseUserManager):
@@ -13,28 +14,27 @@ class UserManager(BaseUserManager):
 
     def _create_user(self, email, password, **extra_fields):
         if not email:
-            raise ValueError("The given email address must be set.")
+            raise ValueError(_("The given email address must be set."))
 
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
-
         return user
 
-    def create_user(self, email=None, password=None, **extra_fields):
+    def create_user(self, email, password, **extra_fields):
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)
         return self._create_user(email, password, **extra_fields)
 
-    def create_superuser(self, email, password, **extra_fields):
+    def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
 
         if extra_fields.get("is_staff") is not True:
-            raise ValueError("Superuser must have is_staff=True.")
+            raise ValueError(_("Superuser must have is_staff=True."))
         if extra_fields.get("is_superuser") is not True:
-            raise ValueError("Superuser must have is_superuser=True.")
+            raise ValueError(_("Superuser must have is_superuser=True."))
 
         return self._create_user(email, password, **extra_fields)
 
@@ -43,29 +43,59 @@ class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
+        editable=False,
+    )
+
+    name = models.CharField(
+        _("name"),
+        max_length=255,
     )
 
     email = models.EmailField(
+        _("email address"),
         unique=True,
     )
 
     is_active = models.BooleanField(
+        _("active"),
         default=True,
+        help_text=_(
+            "Designates whether this user should be treated as active. "
+            "Unselect this instead of deleting accounts."
+        ),
     )
 
     is_staff = models.BooleanField(
+        _("staff status"),
         default=False,
+        help_text=_("Designates whether the user can log into this admin site."),
     )
 
     created_at = models.DateTimeField(
+        _("created at"),
         auto_now_add=True,
     )
 
+    updated_at = models.DateTimeField(
+        _("updated at"),
+        auto_now=True,
+    )
+
     USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["name"]
 
-    REQUIRED_FIELDS: list[str] = []
+    objects = UserManager()
 
-    objects: UserManager = UserManager()
+    class Meta:
+        verbose_name = _("user")
+        verbose_name_plural = _("users")
+        ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return self.email
+        return f"{self.name} <{self.email}>" if self.name else self.email
+
+    def get_full_name(self) -> str:
+        return self.name.strip()
+
+    def get_short_name(self) -> str:
+        return self.name.split()[0] if self.name else self.email
