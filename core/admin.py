@@ -82,6 +82,21 @@ class UserAdmin(UserAdminFromDjango):
         ),
     )
 
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "email",
+                    "name",
+                    "password1",
+                    "password2",
+                ),
+            },
+        ),
+    )
+
 
 class OneTimeCodeAdmin(NoAddModelAdmin):
     list_display = (
