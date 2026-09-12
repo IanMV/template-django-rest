@@ -49,11 +49,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(
         _("name"),
         max_length=255,
+        blank=False,
     )
 
     email = models.EmailField(
         _("email address"),
         unique=True,
+        blank=False,
     )
 
     is_active = models.BooleanField(
@@ -99,3 +101,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def get_short_name(self) -> str:
         return self.name.split()[0] if self.name else self.email
+
+    def deactivate(self):
+        self.is_active = False
+        self.save(update_fields=["is_active", "updated_at"])

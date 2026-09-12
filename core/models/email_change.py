@@ -5,6 +5,8 @@ from .one_time_code import OneTimeCode
 
 
 class EmailChange(OneTimeCode):
+    """ """
+
     new_email = models.EmailField(
         _("new email address"),
     )
