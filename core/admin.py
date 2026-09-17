@@ -2,7 +2,10 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as UserAdminFromDjango
 from django.utils.translation import gettext_lazy as _
 
-from core.models import EmailChange, EmailVerification, PasswordReset, User
+from core.models.email_change import EmailChange
+from core.models.email_verification import EmailVerification
+from core.models.password_reset import PasswordReset
+from core.models.user import User, UserSession
 
 
 class NoAddModelAdmin(admin.ModelAdmin):
@@ -209,3 +212,8 @@ class EmailChangeAdmin(OneTimeCodeAdmin):
     )
 
     search_fields = OneTimeCodeAdmin.search_fields + ("new_email",)
+
+
+@admin.register(UserSession)
+class UserSessionAdmin(admin.ModelAdmin):
+    pass

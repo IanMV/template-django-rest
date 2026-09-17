@@ -105,3 +105,26 @@ class User(AbstractBaseUser, PermissionsMixin):
     def deactivate(self):
         self.is_active = False
         self.save(update_fields=["is_active", "updated_at"])
+
+
+from django.conf import settings
+
+
+class UserSession(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sessions"
+    )
+    access_jti = models.CharField(max_length=255, unique=True)
+    refresh_jti = models.CharField(max_length=255, unique=True)
+    device_name = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    location = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_activity = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.device_name}"
