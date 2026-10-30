@@ -1,6 +1,8 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
+from core.models.user import User
+
 
 class RegistrationRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
@@ -19,6 +21,8 @@ class RegistrationConfirmSerializer(serializers.Serializer):
         write_only=True, required=True, style={"input_type": "password"}
     )
 
-    def validate_password(self, value):
-        validate_password(value)
-        return value
+    def validate(self, attrs):
+        validate_password(
+            attrs["password"], user=User(email=attrs["email"], name=attrs["name"])
+        )
+        return attrs
