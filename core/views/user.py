@@ -1,5 +1,6 @@
 # import uuid
 
+from django.db import transaction
 from django.middleware import csrf
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -12,6 +13,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from core.authenticate import enforce_csrf
 from core.models.user import User, UserSession
 from core.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
@@ -87,9 +89,7 @@ class LoginView(APIView):
             ip_address=request.META.get("REMOTE_ADDR"),
         )
 
-        response = Response(
-            {"detail": MSG_LOGIN_SUCCESSFUL, "data": token_data}, status.HTTP_200_OK
-        )
+        response = Response({"detail": MSG_LOGIN_SUCCESSFUL}, status.HTTP_200_OK)
         access_cookie_kwargs = get_auth_cookie_kwargs(is_refresh=False)
         refresh_cookie_kwargs = get_auth_cookie_kwargs(is_refresh=True)
 
@@ -117,6 +117,7 @@ class CustomTokenRefreshView(TokenRefreshView):
         },
     )
     def post(self, request, *args, **kwargs):
+        enforce_csrf(request)
         refresh_token_str = request.COOKIES.get("refresh_token")
         if not refresh_token_str:
             raise AuthenticationFailed(MSG_NO_REFRESH_TOKEN_PROVIDED)
@@ -125,49 +126,45 @@ class CustomTokenRefreshView(TokenRefreshView):
             old_jti = str(old_refresh_token.get("jti", ""))
         except TokenError:
             raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
-        session_is_active = UserSession.objects.filter(
-            refresh_jti=old_jti,
-            is_active=True,
-        ).exists()
+        with transaction.atomic():
+            session = UserSession.objects.select_for_update().filter(
+                refresh_jti=old_jti, is_active=True
+            ).first()
+            if not session:
+                raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
+            data = {"refresh": refresh_token_str}
+            serializer = self.get_serializer(data=data)
+            try:
+                serializer.is_valid(raise_exception=True)
+            except TokenError as e:
+                raise InvalidToken(e.args[0]) from e
 
-        if not session_is_active:
-            raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
-        data = (
-            request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
-        )
-        data["refresh"] = refresh_token_str
-        serializer = self.get_serializer(data=data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except TokenError as e:
-            raise InvalidToken(e.args[0])
-
-        response_data = serializer.validated_data
-        new_access_token = response_data.get("access")
-        new_refresh_token = response_data.get("refresh")
-        if new_access_token and new_refresh_token:
+            response_data = serializer.validated_data
+            new_access_token = response_data.get("access")
+            new_refresh_token = response_data.get("refresh")
+            if not new_access_token or not new_refresh_token:
+                raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
             new_access_jti = str(AccessToken(new_access_token).get("jti", ""))
             new_refresh_jti = str(RefreshToken(new_refresh_token).get("jti", ""))
-            SessionService.update_session_jtis(
+            if not SessionService.update_session_jtis(
                 old_refresh_jti=old_jti,
                 new_access_jti=new_access_jti,
                 new_refresh_jti=new_refresh_jti,
-            )
+            ):
+                raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
         response = Response(
             {"detail": MSG_REFRESH_TOKENS_SUCCESSFUL}, status.HTTP_200_OK
         )
-        if new_access_token:
-            response.set_cookie(
-                get_auth_cookie_name(),
-                new_access_token,
-                **get_auth_cookie_kwargs(is_refresh=False),
-            )
-        if new_refresh_token:
-            response.set_cookie(
-                "refresh_token",
-                new_refresh_token,
-                **get_auth_cookie_kwargs(is_refresh=True),
-            )
+        response.set_cookie(
+            get_auth_cookie_name(),
+            new_access_token,
+            **get_auth_cookie_kwargs(is_refresh=False),
+        )
+        response.set_cookie(
+            "refresh_token",
+            new_refresh_token,
+            **get_auth_cookie_kwargs(is_refresh=True),
+        )
 
         return response
 

@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate
+from django.db import transaction
 from django.db.models import Q
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import TokenError
@@ -74,17 +75,9 @@ class SessionService:
     def update_session_jtis(
         cls, old_refresh_jti: str, new_access_jti: str, new_refresh_jti: str
     ):
-        session = UserSession.objects.filter(
+        return UserSession.objects.filter(
             refresh_jti=old_refresh_jti, is_active=True
-        ).first()
-
-        if session:
-            session.access_jti = new_access_jti
-            session.refresh_jti = new_refresh_jti
-            session.save(update_fields=["access_jti", "refresh_jti", "updated_at"])
-            return session
-
-        return None
+        ).update(access_jti=new_access_jti, refresh_jti=new_refresh_jti)
 
 
 class AuthService:
@@ -101,16 +94,22 @@ class AuthService:
         jti_access = str(AccessToken(access_token).get("jti"))
         jti_refresh = str(RefreshToken(refresh_token).get("jti"))
 
-        UserSession.objects.update_or_create(
-            user=user,
-            device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
-            ip_address=ip_address,
-            defaults={
-                "access_jti": jti_access,
-                "refresh_jti": jti_refresh,
-                "is_active": True,
-            },
-        )
+        with transaction.atomic():
+            sessions = UserSession.objects.select_for_update().filter(
+                user=user,
+                device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
+                ip_address=ip_address,
+                is_active=True,
+            )
+            for session in sessions:
+                SessionService.deactivate_session(user, session.pk)
+            UserSession.objects.create(
+                user=user,
+                device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
+                ip_address=ip_address,
+                access_jti=jti_access,
+                refresh_jti=jti_refresh,
+            )
 
         return {
             "refresh": refresh_token,
