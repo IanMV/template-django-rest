@@ -41,7 +41,16 @@ build-backend = "pdm.backend"
 distribution = false
 
 [tool.pdm.scripts]
-dev = "pdm run manage.py runserver"
+dev = "python manage.py runserver"
+migrate = "python manage.py migrate"
+check = "python manage.py check"
+test = "python manage.py test"
+lint = "ruff check"
+format = "ruff format"
+migrations-check = "python manage.py makemigrations --check --dry-run"
+schema-check = "python manage.py spectacular --validate --fail-on-warn --file /dev/null"
+deploy-check = { cmd = "python manage.py check --deploy", env = { DJANGO_SETTINGS_MODULE = "app.settings.prod" } }
+verify = { composite = ["check", "migrations-check", "schema-check", "lint", "test"] }
 
 [tool.pyright]
 exclude = [

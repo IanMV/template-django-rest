@@ -27,11 +27,11 @@ jobs:
 
     - name: Run Django System Checks
       run: |
-        pdm run python manage.py check
+        pdm run check
 
     - name: Run Django behavior tests
-      run: pdm run python manage.py test
+      run: pdm run test
 
     - name: Analysing the code with ruff
       run: |
-        pdm run ruff check
+        pdm run lint
