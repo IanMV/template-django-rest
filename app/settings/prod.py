@@ -6,40 +6,18 @@ DEBUG = False
 SIMPLE_JWT = {**SIMPLE_JWT, "AUTH_COOKIE_SECURE": True}  # noqa: F405
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
-ALLOWED_HOSTS = [""]
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 SECRET_KEY = os.getenv("SECRET_KEY")
-DATABASES = {  # AUTOCOMMIT
-    # ENGINE
-    # HOST
-    # NAME
-    # CONN_MAX_AGE
-    # CONN_HEALTH_CHECKS
-    # OPTIONS
-    # PASSWORD
-    # PORT
-    # DISABLE_SERVER_SIDE_CURSORS
-    # USER
-    # TEST
-    # CHARSET
-    # COLLATION
-    # DEPENDENCIES
-    # MIGRATE
-    # MIRROR
-    # NAME
-    # TEMPLATE
-    # CREATE_DB
-    # CREATE_USER
-    # USER
-    # PASSWORD
-    # ORACLE_MANAGED_FILES
-    # TBLSPACE
-    # TBLSPACE_TMP
-    # DATAFILE
-    # DATAFILE_TMP
-    # DATAFILE_MAXSIZE
-    # DATAFILE_TMP_MAXSIZE
-    # DATAFILE_SIZE
-    # DATAFILE_TMP_SIZE
-    # DATAFILE_EXTSIZE
-    # DATAFILE_TMP_EXTSIZE
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": os.getenv("DATABASE_NAME", str(BASE_DIR / "db.sqlite3")),  # noqa: F405
+    }
 }
