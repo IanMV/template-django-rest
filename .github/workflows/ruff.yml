@@ -5,6 +5,8 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-only-secret-key-long-enough-for-jwt-signatures
     steps:
     - uses: actions/checkout@v4
 
@@ -26,6 +28,9 @@ jobs:
     - name: Run Django System Checks
       run: |
         pdm run python manage.py check
+
+    - name: Run Django behavior tests
+      run: pdm run python manage.py test
 
     - name: Analysing the code with ruff
       run: |
