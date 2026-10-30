@@ -25,7 +25,8 @@ class RegistrationService:
                 )
                 if not created and user.is_active:
                     raise serializers.ValidationError({"email": MSG_EMAIL_ALREADY_EXIST})
-                verification, __ = EmailVerification.objects.update_or_create(user=user)
+                EmailVerification.objects.filter(user=user).delete()
+                verification = EmailVerification(user=user)
                 verification.set_code(raw_code)
                 verification.save()
                 send_email_token(user.email, raw_code, "Verify your e-mail")
