@@ -1,13 +1,9 @@
-from django.db import transaction
 from django.middleware import csrf
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.auth.authenticate import enforce_csrf
@@ -15,15 +11,6 @@ from core.auth.cookies import (
     clear_auth_cookies,
     get_auth_cookie_kwargs,
     get_auth_cookie_name,
-)
-from core.models.user import UserSession
-from core.shared.response_messages import (
-    MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
-    MSG_LOGIN_SUCCESSFUL,
-    MSG_LOGOUT_SUCCESSFUL,
-    MSG_NO_REFRESH_TOKEN_PROVIDED,
-    MSG_REFRESH_TOKENS_SUCCESSFUL,
-    MSG_SESSION_REVOKED_OR_INACTIVE,
 )
 from core.auth.serializers import LoginSerializer
 from core.auth.services import AuthService, SessionService
@@ -34,6 +21,11 @@ from core.shared.docs import (
     LogoutSuccessfulSerializer,
     NotAuthenticatedSerializer,
     RefreshTokensSuccessfulSerializer,
+)
+from core.shared.response_messages import (
+    MSG_LOGIN_SUCCESSFUL,
+    MSG_LOGOUT_SUCCESSFUL,
+    MSG_REFRESH_TOKENS_SUCCESSFUL,
 )
 
 # TODO: add description and summary to all of views
@@ -63,27 +55,13 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        previous_session = None
-        raw_access_token = request.COOKIES.get(get_auth_cookie_name())
-        if raw_access_token:
-            try:
-                jti = str(AccessToken(raw_access_token).get("jti", ""))
-                previous_session = UserSession.objects.filter(
-                    access_jti=jti, is_active=True
-                ).select_related("user").first()
-            except TokenError:
-                pass
-
         token_data = AuthService.login_user(
             email=serializer.validated_data.get("email"),
             password=serializer.validated_data.get("password"),
             user_agent_string=request.META.get("HTTP_USER_AGENT", ""),
             ip_address=request.META.get("REMOTE_ADDR"),
+            raw_access_token=request.COOKIES.get(get_auth_cookie_name()),
         )
-        if previous_session:
-            SessionService.deactivate_session(
-                previous_session.user, previous_session.pk
-            )
 
         response = Response({"detail": MSG_LOGIN_SUCCESSFUL}, status.HTTP_200_OK)
         access_cookie_kwargs = get_auth_cookie_kwargs(is_refresh=False)
@@ -114,51 +92,20 @@ class CustomTokenRefreshView(TokenRefreshView):
     )
     def post(self, request, *args, **kwargs):
         enforce_csrf(request)
-        refresh_token_str = request.COOKIES.get("refresh_token")
-        if not refresh_token_str:
-            raise AuthenticationFailed(MSG_NO_REFRESH_TOKEN_PROVIDED)
-        try:
-            old_refresh_token = RefreshToken(refresh_token_str)
-            old_jti = str(old_refresh_token.get("jti", ""))
-        except TokenError:
-            raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
-        with transaction.atomic():
-            session = UserSession.objects.select_for_update().filter(
-                refresh_jti=old_jti, is_active=True
-            ).first()
-            if not session:
-                raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
-            data = {"refresh": refresh_token_str}
-            serializer = self.get_serializer(data=data)
-            try:
-                serializer.is_valid(raise_exception=True)
-            except TokenError as e:
-                raise InvalidToken(e.args[0]) from e
-
-            response_data = serializer.validated_data
-            new_access_token = response_data.get("access")
-            new_refresh_token = response_data.get("refresh")
-            if not new_access_token or not new_refresh_token:
-                raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
-            new_access_jti = str(AccessToken(new_access_token).get("jti", ""))
-            new_refresh_jti = str(RefreshToken(new_refresh_token).get("jti", ""))
-            if not SessionService.update_session_jtis(
-                old_refresh_jti=old_jti,
-                new_access_jti=new_access_jti,
-                new_refresh_jti=new_refresh_jti,
-            ):
-                raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
+        token_data = SessionService.refresh_tokens(
+            request.COOKIES.get("refresh_token"), self.get_serializer
+        )
         response = Response(
             {"detail": MSG_REFRESH_TOKENS_SUCCESSFUL}, status.HTTP_200_OK
         )
         response.set_cookie(
             get_auth_cookie_name(),
-            new_access_token,
+            token_data["access"],
             **get_auth_cookie_kwargs(is_refresh=False),
         )
         response.set_cookie(
             "refresh_token",
-            new_refresh_token,
+            token_data["refresh"],
             **get_auth_cookie_kwargs(is_refresh=True),
         )
 
@@ -178,14 +125,9 @@ class LogoutView(APIView):
         },
     )
     def post(self, request):
-        raw_access_token = request.COOKIES.get(get_auth_cookie_name())
-        if raw_access_token:
-            try:
-                jti = str(AccessToken(raw_access_token).get("jti", ""))
-                SessionService.deactivate_session_by_access_jti(request.user, jti)
-            except TokenError:
-                pass
+        SessionService.logout_user(
+            request.user, request.COOKIES.get(get_auth_cookie_name())
+        )
         response = Response({"detail": MSG_LOGOUT_SUCCESSFUL}, status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response
-

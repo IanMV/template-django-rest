@@ -1,129 +1,18 @@
 from django.contrib import admin
 from django.urls import include, path
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularSwaggerView,
-)
 
-from core.email_change.views import (
-    EmailChangeConfirmView,
-    EmailChangeRequestView,
-    EmailChangeVerifyView,
-)
-from core.password_reset.views import (
-    PasswordResetConfirmView,
-    PasswordResetRequestView,
-    PasswordResetVerifyView,
-)
-from core.registration.views import (
-    RegistrationConfirmView,
-    RegistrationRequestView,
-    RegistrationVerifyView,
-)
-from core.auth.session_views import UserSessionsDeactivateView, UserSessionsGetView
-from core.auth.views import CustomTokenRefreshView, LoginView, LogoutView
-from core.users.views import (
-    DeactivateSelfView,
-    RevokeAllSessionsView,
-    UserListView,
-    UserMeView,
-)
-
-route_docs = [
-    path(
-        "urls/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
-    path("schema/", SpectacularAPIView.as_view(), name="schema"),
-]
-
-route_core = [
-    path("login/", LoginView.as_view(), name="login"),
-    path("me/logout/", LogoutView.as_view(), name="logout"),
-    path("me/deactivate/", DeactivateSelfView.as_view(), name="deactivate-self"),
-    path(
-        "me/revoke-sessions/", RevokeAllSessionsView.as_view(), name="revoke-sessions"
-    ),
-    path("sessions/", UserSessionsGetView.as_view(), name="user-sessions-list"),
-    path(
-        "sessions/<int:session_id>/",
-        UserSessionsDeactivateView.as_view(),
-        name="user-sessions-deactivate",
-    ),
-    path(
-        "registration/",
-        include(
-            [
-                path(
-                    "request/",
-                    RegistrationRequestView.as_view(),
-                    name="registration-request",
-                ),
-                path(
-                    "verify/",
-                    RegistrationVerifyView.as_view(),
-                    name="registration-verify",
-                ),
-                path(
-                    "confirm/",
-                    RegistrationConfirmView.as_view(),
-                    name="registration-confirm",
-                ),
-            ]
-        ),
-    ),
-    path(
-        "password-reset/",
-        include(
-            [
-                path(
-                    "request/",
-                    PasswordResetRequestView.as_view(),
-                    name="password-reset-request",
-                ),
-                path(
-                    "verify/",
-                    PasswordResetVerifyView.as_view(),
-                    name="password-reset-verify",
-                ),
-                path(
-                    "confirm/",
-                    PasswordResetConfirmView.as_view(),
-                    name="password-reset-confirm",
-                ),
-            ]
-        ),
-    ),
-    path(
-        "email-change/",
-        include(
-            [
-                path(
-                    "request/",
-                    EmailChangeRequestView.as_view(),
-                    name="email-change-request",
-                ),
-                path(
-                    "verify/",
-                    EmailChangeVerifyView.as_view(),
-                    name="email-change-verify",
-                ),
-                path(
-                    "confirm/",
-                    EmailChangeConfirmView.as_view(),
-                    name="email-change-confirm",
-                ),
-            ]
-        ),
-    ),
-    path("refresh/", CustomTokenRefreshView.as_view(), name="refresh"),
-    path("users/me/", UserMeView.as_view(), name="me"),
-    path("users/list/", UserListView.as_view(), name="users-list"),
-]
+from core.auth import urls as auth_urls
+from core.users import urls as users_urls
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/docs/", include(route_docs)),
-    path("api/", include(route_core)),
+    path("api/docs/", include("core.shared.urls")),
+    path("api/", include(auth_urls.login_urlpatterns)),
+    path("api/", include(users_urls.account_urlpatterns)),
+    path("api/", include(auth_urls.session_urlpatterns)),
+    path("api/registration/", include("core.registration.urls")),
+    path("api/password-reset/", include("core.password_reset.urls")),
+    path("api/email-change/", include("core.email_change.urls")),
+    path("api/", include(auth_urls.refresh_urlpatterns)),
+    path("api/", include(users_urls.profile_urlpatterns)),
 ]
