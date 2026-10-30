@@ -1,6 +1,5 @@
 from django.contrib.auth import authenticate
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import TokenError
@@ -11,7 +10,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from user_agents import parse
 
-from core.models.user import User, UserSession
+from core.models.user import UserSession
 from core.auth.rate_limit import limit_login_attempts
 
 
@@ -122,25 +121,3 @@ class AuthService:
             "refresh": refresh_token,
             "access": access_token,
         }
-
-
-class UserService:
-    @staticmethod
-    def get_user_by_id(target_user_id: int, requesting_user: User) -> User:
-        if requesting_user.is_staff or requesting_user.is_superuser:
-            return User.objects.get(pk=target_user_id)
-        return User.objects.get(
-            Q(pk=target_user_id) & (Q(is_active=True) | Q(pk=requesting_user.pk))
-        )
-
-    @staticmethod
-    def list_users(requesting_user: User):
-        if requesting_user.is_staff or requesting_user.is_superuser:
-            return User.objects.all()
-        return User.objects.filter(is_active=True)
-
-    @staticmethod
-    def deactivate_user(requesting_user: User):
-        with transaction.atomic():
-            requesting_user.deactivate()
-            SessionService.revoke_all_sessions(requesting_user)

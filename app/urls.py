@@ -20,16 +20,13 @@ from core.views.registration import (
     RegistrationRequestView,
     RegistrationVerifyView,
 )
-from core.auth.views import (
-    CustomTokenRefreshView,
+from core.auth.session_views import UserSessionsDeactivateView, UserSessionsGetView
+from core.auth.views import CustomTokenRefreshView, LoginView, LogoutView
+from core.users.views import (
     DeactivateSelfView,
-    LoginView,
-    LogoutView,
     RevokeAllSessionsView,
     UserListView,
     UserMeView,
-    UserSessionsDeactivateView,
-    UserSessionsGetView,
 )
 
 route_docs = [

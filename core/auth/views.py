@@ -1,13 +1,10 @@
-# import uuid
-
 from django.db import transaction
 from django.middleware import csrf
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed, NotFound
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.validators import ValidationError
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -19,54 +16,29 @@ from core.auth.cookies import (
     get_auth_cookie_kwargs,
     get_auth_cookie_name,
 )
-from core.models.user import User, UserSession
+from core.models.user import UserSession
 from core.shared.response_messages import (
-    MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
     MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
     MSG_LOGIN_SUCCESSFUL,
     MSG_LOGOUT_SUCCESSFUL,
     MSG_NO_REFRESH_TOKEN_PROVIDED,
     MSG_REFRESH_TOKENS_SUCCESSFUL,
     MSG_SESSION_REVOKED_OR_INACTIVE,
-    MSG_USER_DEACTIVATED,
-    MSG_USER_NOT_FOUND,
-    MSG_USER_REVOKED_ALL_SESSIONS,
-    MSG_USER_SESSION_DEACTIVATED,
-    MSG_USER_SESSION_NOT_FOUND,
 )
-from core.auth.serializers import (
-    LoginSerializer,
-    UserListRetrieveSerializer,
-    UserSessionSerializer,
-    UserUpdateSelfSerializer,
-)
-from core.auth.services import AuthService, SessionService, UserService
+from core.auth.serializers import LoginSerializer
+from core.auth.services import AuthService, SessionService
 from core.shared.docs import (
-    CannotDeactivateCurrentSessionSerializer,
     IncorrectAuthenticationsCredentialsSerializer,
     InvalidOrExpiredRefreshTokenSerializer,
     LoginSucessfulSerializer,
     LogoutSuccessfulSerializer,
     NotAuthenticatedSerializer,
     RefreshTokensSuccessfulSerializer,
-    UserDeactivatedSerializer,
-    UserNotFoundSerializer,
-    UserRevokedAllSessionsSerializer,
-    UserSessionDeactivatedSerializer,
-    UserSessionNotFoundSerializer,
 )
 
 # TODO: add description and summary to all of views
 
 # TODO: adicionar responses aos novos endpoints de resfresh e arrumar MSG_... deles nos erros (estão em português e sem gettext_lazy)
-
-
-def get_tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
-    return {
-        "refresh": str(refresh),
-        "access": str(refresh.access_token),
-    }
 
 
 class LoginView(APIView):
@@ -217,185 +189,3 @@ class LogoutView(APIView):
         clear_auth_cookies(response)
         return response
 
-
-class UserSessionsDeactivateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Deactivate a session",
-        description="",
-        request=None,
-        responses={
-            200: UserSessionDeactivatedSerializer,
-            400: CannotDeactivateCurrentSessionSerializer,
-            401: NotAuthenticatedSerializer,
-            404: UserSessionNotFoundSerializer,
-        },
-        parameters=[
-            OpenApiParameter(
-                name="session_id",
-                type=int,
-                # TODO: when the model change int to uuid, change type here too
-                location=OpenApiParameter.PATH,
-                required=True,
-            )
-        ],
-    )
-    def delete(self, request, session_id):
-        raw_access_token = request.COOKIES.get(get_auth_cookie_name())
-        current_session = None
-        if raw_access_token:
-            try:
-                current_jti = str(AccessToken(raw_access_token).get("jti", ""))
-                current_session = UserSession.objects.filter(
-                    access_jti=current_jti, user=request.user
-                ).first()
-            except TokenError:
-                pass
-        if current_session and current_session.id == session_id:
-            raise ValidationError({"detail": MSG_CANNOT_DEACTIVATE_CURRENT_SESSION})
-        try:
-            SessionService.deactivate_session(request.user, session_id)
-            return Response(
-                {"detail": MSG_USER_SESSION_DEACTIVATED}, status.HTTP_200_OK
-            )
-        except UserSession.DoesNotExist:
-            raise NotFound(MSG_USER_SESSION_NOT_FOUND)
-
-
-class UserSessionsGetView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="List active user sessions",
-        description="Returns all active sessions of the requesting user. And, indicates which session is the current.",
-        request=None,
-        responses={
-            200: UserSessionSerializer(many=True),
-            401: NotAuthenticatedSerializer,
-        },
-    )
-    def get(self, request):
-        raw_access_token = request.COOKIES.get(get_auth_cookie_name())
-        sessions = SessionService.get_active_sessions_with_current(
-            request.user, raw_access_token
-        )
-        serializer = UserSessionSerializer(sessions, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-class RevokeAllSessionsView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Revoke all active sessions",
-        description="Instantly revokes all active sessions for the requesting user across all devices by blacklisting all outstanding refresh tokens and setting all session records to inactive.",
-        request=None,
-        responses={
-            200: UserRevokedAllSessionsSerializer,
-            401: NotAuthenticatedSerializer,
-        },
-    )
-    def post(self, request):
-        SessionService.revoke_all_sessions(request.user)
-        response = Response({"detail": MSG_USER_REVOKED_ALL_SESSIONS}, status.HTTP_200_OK)
-        clear_auth_cookies(response)
-        return response
-
-
-class UserMeView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Get current user profile",
-        description="Retrieves the profile information for the currently authenticated user.",
-        responses={
-            200: UserListRetrieveSerializer,
-            401: NotAuthenticatedSerializer,
-        },
-    )
-    def get(self, request):
-        serializer = UserListRetrieveSerializer(request.user)
-        return Response(serializer.data, status.HTTP_200_OK)
-
-
-class UserListView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="List users",
-        description="Retrieves a list of users registered in the system based on the authorization rules evaluated in the service layer.",
-        responses={
-            200: UserListRetrieveSerializer(many=True),
-            401: NotAuthenticatedSerializer,
-        },
-    )
-    def get(self, request):
-        users = UserService.list_users(requesting_user=request.user)
-        serializer = UserListRetrieveSerializer(users, many=True)
-        return Response(serializer.data, status.HTTP_200_OK)
-
-
-class UserDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Get user profile by ID",
-        description="Retrieves profile details for a specific user using their ID, provided the requesting user has the necessary permissions.",
-        responses={
-            200: UserListRetrieveSerializer,
-            401: NotAuthenticatedSerializer,
-            404: UserNotFoundSerializer,
-        },
-    )
-    def get(self, request, user_id: int):
-        try:
-            user = UserService.get_user_by_id(
-                target_user_id=user_id, requesting_user=request.user
-            )
-        except User.DoesNotExist:
-            raise NotFound({"detail": MSG_USER_NOT_FOUND})
-
-        serializer = UserListRetrieveSerializer(user)
-        return Response(serializer.data, status.HTTP_200_OK)
-
-
-class DeactivateSelfView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Deactivate own user account",
-        description="Deactivates the authenticated user's account, revoking all active sessions and preventing subsequent authentication attempts.",
-        request=None,
-        responses={
-            200: UserDeactivatedSerializer,
-            401: NotAuthenticatedSerializer,
-        },
-    )
-    def post(self, request):
-        UserService.deactivate_user(request.user)
-        response = Response({"detail": MSG_USER_DEACTIVATED}, status.HTTP_200_OK)
-        clear_auth_cookies(response)
-        return response
-
-
-class UserUpdateSelfView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Update current user profile",
-        description="Performs a partial update on the profile fields of the currently authenticated user.",
-        request=UserUpdateSelfSerializer,
-        responses={
-            200: UserUpdateSelfSerializer,
-            400: UserUpdateSelfSerializer,
-            401: NotAuthenticatedSerializer,
-        },
-    )
-    def patch(self, request):
-        user = request.user
-        serializer = UserUpdateSelfSerializer(user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        return Response(serializer.data, status.HTTP_200_OK)

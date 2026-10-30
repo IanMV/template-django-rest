@@ -1,12 +1,7 @@
 from django.urls import path
 
-from core.auth.views import (
-    CustomTokenRefreshView,
-    LoginView,
-    LogoutView,
-    UserSessionsDeactivateView,
-    UserSessionsGetView,
-)
+from core.auth.session_views import UserSessionsDeactivateView, UserSessionsGetView
+from core.auth.views import CustomTokenRefreshView, LoginView, LogoutView
 
 urlpatterns = [
     path("login/", LoginView.as_view(), name="login"),
