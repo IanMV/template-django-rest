@@ -1,6 +1,7 @@
 from django.middleware import csrf
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -36,6 +37,12 @@ from core.shared.response_messages import (
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+
+    def handle_exception(self, exc):
+        response = super().handle_exception(exc)
+        if isinstance(exc, AuthenticationFailed) and response.status_code == 403:
+            response.status_code = 401
+        return response
 
     @extend_schema(
         tags=["auth"],
