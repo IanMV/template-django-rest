@@ -5,12 +5,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_PASWORD_RESET
-from core.serializers.password_reset import (
+from core.password_reset.serializers import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
 )
-from core.services.password_reset import PasswordResetService
+from core.password_reset.services import PasswordResetService
 from core.shared.docs import (
     CodeIsInvalidSerializer,
     CodeIsValidSerializer,

@@ -10,7 +10,7 @@ from core.views.email_change import (
     EmailChangeRequestView,
     EmailChangeVerifyView,
 )
-from core.views.password_reset import (
+from core.password_reset.views import (
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PasswordResetVerifyView,
