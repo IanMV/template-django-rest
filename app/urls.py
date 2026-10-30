@@ -5,7 +5,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from core.views.email_change import (
+from core.email_change.views import (
     EmailChangeConfirmView,
     EmailChangeRequestView,
     EmailChangeVerifyView,

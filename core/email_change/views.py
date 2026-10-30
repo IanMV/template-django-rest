@@ -5,12 +5,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_EMAIL_CHANGED
-from core.serializers.email_change import (
+from core.email_change.serializers import (
     EmailChangeConfirmSerializer,
     EmailChangeRequestSerializer,
     EmailChangeVerifySerializer,
 )
-from core.services.email_change import EmailChangeService
+from core.email_change.services import EmailChangeService
 from core.shared.docs import (
     CodeIsInvalidSerializer,
     CodeIsValidSerializer,
