@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.response_messages import (
+from core.shared.response_messages import (
     MSG_CODE_SENT,
     MSG_CODE_VALID,
     MSG_USER_CREATED,
@@ -15,7 +15,7 @@ from core.serializers.registration import (
     RegistrationVerifySerializer,
 )
 from core.services.registration import RegistrationService
-from core.spectacular_serializers import (
+from core.shared.docs import (
     CodeIsInvalidSerializer,
     CodeIsValidSerializer,
     EmailAlreadyExistsSerializer,

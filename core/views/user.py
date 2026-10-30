@@ -15,7 +15,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.authenticate import enforce_csrf
 from core.models.user import User, UserSession
-from core.response_messages import (
+from core.shared.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
     MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
     MSG_LOGIN_SUCCESSFUL,
@@ -36,7 +36,7 @@ from core.serializers.user import (
     UserUpdateSelfSerializer,
 )
 from core.services.user import AuthService, SessionService, UserService
-from core.spectacular_serializers import (
+from core.shared.docs import (
     CannotDeactivateCurrentSessionSerializer,
     IncorrectAuthenticationsCredentialsSerializer,
     InvalidOrExpiredRefreshTokenSerializer,

@@ -6,7 +6,7 @@ from rest_framework.exceptions import (
 )
 from rest_framework.serializers import CharField
 
-from core.response_messages import (
+from core.shared.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
     MSG_CODE_INVALID,
     MSG_CODE_SENT,

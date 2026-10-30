@@ -4,14 +4,14 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_PASWORD_RESET
+from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_PASWORD_RESET
 from core.serializers.password_reset import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
 )
 from core.services.password_reset import PasswordResetService
-from core.spectacular_serializers import (
+from core.shared.docs import (
     CodeIsInvalidSerializer,
     CodeIsValidSerializer,
     PasswordResetSerializer,

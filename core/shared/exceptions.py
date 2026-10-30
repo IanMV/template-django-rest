@@ -1,6 +1,6 @@
 from rest_framework.exceptions import APIException
 
-from core.response_messages import MSG_SERVICE_UNAVAILABLE
+from core.shared.response_messages import MSG_SERVICE_UNAVAILABLE
 
 
 class ServiceUnavailable(APIException):
