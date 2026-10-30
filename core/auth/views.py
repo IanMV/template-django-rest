@@ -51,7 +51,9 @@ class LoginView(APIView):
         request=None,
         auth=[],
         responses={
-            204: OpenApiResponse(response=None, description="No body; Set-Cookie: csrftoken.")
+            204: OpenApiResponse(
+                response=None, description="No body; Set-Cookie: csrftoken."
+            )
         },
     )
     def get(self, request):

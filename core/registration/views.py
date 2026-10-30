@@ -37,7 +37,11 @@ class RegistrationRequestView(APIView):
         description="Step 1 of 3: submit an email. A six-digit code is sent to that address; request again after the cooldown to replace an expired code.",
         request=RegistrationRequestSerializer,
         examples=[
-            OpenApiExample("Registration email", value={"email": "person@example.com"}, request_only=True),
+            OpenApiExample(
+                "Registration email",
+                value={"email": "person@example.com"},
+                request_only=True,
+            ),
             OpenApiExample(
                 "Email already active",
                 value={"email": "This account is already active."},
@@ -74,7 +78,11 @@ class RegistrationVerifyView(APIView):
         description="Step 2 of 3: check the six-digit email code without consuming it. Invalid attempts count toward the five-attempt limit.",
         request=RegistrationVerifySerializer,
         examples=[
-            OpenApiExample("Verify registration", value={"email": "person@example.com", "code": "123456"}, request_only=True),
+            OpenApiExample(
+                "Verify registration",
+                value={"email": "person@example.com", "code": "123456"},
+                request_only=True,
+            ),
             InvalidCodeExample,
         ],
         responses={
@@ -103,7 +111,16 @@ class RegistrationConfirmView(APIView):
         description="Step 3 of 3: send the same email/code with a name and password. Success creates an active user and consumes the code; no authentication cookies are set.",
         request=RegistrationConfirmSerializer,
         examples=[
-            OpenApiExample("Confirm registration", value={"email": "person@example.com", "code": "123456", "name": "Example Person", "password": "StrongPass!4693$"}, request_only=True),
+            OpenApiExample(
+                "Confirm registration",
+                value={
+                    "email": "person@example.com",
+                    "code": "123456",
+                    "name": "Example Person",
+                    "password": "StrongPass!4693$",
+                },
+                request_only=True,
+            ),
             InvalidCodeExample,
         ],
         responses={

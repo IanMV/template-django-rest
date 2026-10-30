@@ -40,7 +40,9 @@ class EmailChangeRequestView(APIView):
         description="Step 1 of 3: while authenticated, submit the new email address. A six-digit code is sent to the new address; send X-CSRFTOKEN.",
         request=EmailChangeRequestSerializer,
         examples=[
-            OpenApiExample("New email", value={"new_email": "new@example.com"}, request_only=True),
+            OpenApiExample(
+                "New email", value={"new_email": "new@example.com"}, request_only=True
+            ),
             OpenApiExample(
                 "Email already in use",
                 value={"new_email": "This e-mail is already in use."},
@@ -80,7 +82,9 @@ class EmailChangeVerifyView(APIView):
         description="Step 2 of 3: verify the six-digit code without consuming it. Requires the access cookie and X-CSRFTOKEN.",
         request=EmailChangeVerifySerializer,
         examples=[
-            OpenApiExample("Verify email change", value={"code": "123456"}, request_only=True),
+            OpenApiExample(
+                "Verify email change", value={"code": "123456"}, request_only=True
+            ),
             InvalidCodeExample,
             CsrfFailureExample,
         ],
@@ -110,7 +114,11 @@ class EmailChangeConfirmView(APIView):
         description="Step 3 of 3: send the code and current password. Success changes the email, revokes all sessions and clears access/refresh cookies; log in again with the new email.",
         request=EmailChangeConfirmSerializer,
         examples=[
-            OpenApiExample("Confirm email change", value={"code": "123456", "password": "current-password"}, request_only=True),
+            OpenApiExample(
+                "Confirm email change",
+                value={"code": "123456", "password": "current-password"},
+                request_only=True,
+            ),
             InvalidCodeExample,
             CsrfFailureExample,
         ],

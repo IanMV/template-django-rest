@@ -196,9 +196,7 @@ SessionRevokedOrInactiveSerializer = inline_serializer(
     },
 )
 
-ThrottledSerializer = inline_serializer(
-    "ThrottledResponse", {"detail": CharField()}
-)
+ThrottledSerializer = inline_serializer("ThrottledResponse", {"detail": CharField()})
 
 ValidationErrorResponse = OpenApiResponse(
     response={

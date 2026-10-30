@@ -48,10 +48,16 @@ class EmailChangeService:
             raise serializers.ValidationError({"password": "Invalid current password."})
 
         with transaction.atomic():
-            change_code = EmailChange.objects.select_for_update().filter(user=user).first()
+            change_code = (
+                EmailChange.objects.select_for_update().filter(user=user).first()
+            )
             valid = change_code is not None and change_code.verify(code)
             if valid:
-                if User.objects.filter(email=change_code.new_email).exclude(pk=user.pk).exists():
+                if (
+                    User.objects.filter(email=change_code.new_email)
+                    .exclude(pk=user.pk)
+                    .exists()
+                ):
                     raise serializers.ValidationError(
                         {"new_email": "This e-mail is already in use."}
                     )

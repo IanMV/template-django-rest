@@ -38,7 +38,9 @@ class RevokeAllSessionsView(APIView):
     )
     def post(self, request):
         SessionService.revoke_all_sessions(request.user)
-        response = Response({"detail": MSG_USER_REVOKED_ALL_SESSIONS}, status.HTTP_200_OK)
+        response = Response(
+            {"detail": MSG_USER_REVOKED_ALL_SESSIONS}, status.HTTP_200_OK
+        )
         clear_auth_cookies(response)
         return response
 

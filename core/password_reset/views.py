@@ -37,7 +37,11 @@ class PasswordResetRequestView(APIView):
         description="Step 1 of 3: enter the account email. For privacy the same response is returned for unknown addresses; active accounts receive a six-digit code.",
         request=PasswordResetRequestSerializer,
         examples=[
-            OpenApiExample("Account email", value={"email": "person@example.com"}, request_only=True),
+            OpenApiExample(
+                "Account email",
+                value={"email": "person@example.com"},
+                request_only=True,
+            ),
             RateLimitedExample,
         ],
         responses={
@@ -71,7 +75,11 @@ class PasswordResetVerifyView(APIView):
         description="Step 2 of 3: check the email and six-digit code without consuming it. Wrong codes count toward the five-attempt limit.",
         request=PasswordResetVerifySerializer,
         examples=[
-            OpenApiExample("Verify reset", value={"email": "person@example.com", "code": "123456"}, request_only=True),
+            OpenApiExample(
+                "Verify reset",
+                value={"email": "person@example.com", "code": "123456"},
+                request_only=True,
+            ),
             InvalidCodeExample,
         ],
         responses={
@@ -101,7 +109,15 @@ class PasswordResetConfirmView(APIView):
         description="Step 3 of 3: send email, code and a new password. Success consumes the code and revokes existing sessions; this endpoint does not create authentication cookies.",
         request=PasswordResetConfirmSerializer,
         examples=[
-            OpenApiExample("Confirm reset", value={"email": "person@example.com", "code": "123456", "new_password": "StrongPass!4693$"}, request_only=True),
+            OpenApiExample(
+                "Confirm reset",
+                value={
+                    "email": "person@example.com",
+                    "code": "123456",
+                    "new_password": "StrongPass!4693$",
+                },
+                request_only=True,
+            ),
             InvalidCodeExample,
         ],
         responses={

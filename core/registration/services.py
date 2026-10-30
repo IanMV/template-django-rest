@@ -25,7 +25,9 @@ class RegistrationService:
                     email=email, defaults={"is_active": False}
                 )
                 if not created and user.is_active:
-                    raise serializers.ValidationError({"email": MSG_EMAIL_ALREADY_EXIST})
+                    raise serializers.ValidationError(
+                        {"email": MSG_EMAIL_ALREADY_EXIST}
+                    )
                 EmailVerification.objects.filter(user=user).delete()
                 verification = EmailVerification(user=user)
                 verification.set_code(raw_code)
@@ -50,9 +52,11 @@ class RegistrationService:
     @staticmethod
     def confirm_registration(email: str, code: str, name: str, password: str) -> None:
         with transaction.atomic():
-            verification = EmailVerification.objects.select_for_update().filter(
-                user__email=email, user__is_active=False
-            ).first()
+            verification = (
+                EmailVerification.objects.select_for_update()
+                .filter(user__email=email, user__is_active=False)
+                .first()
+            )
             valid = verification is not None and verification.verify(code)
             if valid:
                 user = verification.user

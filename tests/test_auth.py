@@ -19,7 +19,9 @@ class AuthenticationTests(ApiCase):
         user = self.create_user()
         self.client.get("/api/login/")
         response = self.client.post(
-            "/api/login/", {"email": user.email, "password": self.password}, format="json"
+            "/api/login/",
+            {"email": user.email, "password": self.password},
+            format="json",
         )
         self.assertEqual(response.status_code, 403)
         self.assertFalse(UserSession.objects.exists())
@@ -51,7 +53,9 @@ class AuthenticationTests(ApiCase):
         self.login(second)
         first_session.refresh_from_db()
         self.assertFalse(first_session.is_active)
-        self.assertEqual(UserSession.objects.filter(user=second, is_active=True).count(), 1)
+        self.assertEqual(
+            UserSession.objects.filter(user=second, is_active=True).count(), 1
+        )
 
     def test_login_replaces_same_user_device_and_ip(self):
         user = self.create_user()
@@ -61,8 +65,12 @@ class AuthenticationTests(ApiCase):
         self.login(user)
         previous.refresh_from_db()
         self.assertFalse(previous.is_active)
-        self.assertEqual(UserSession.objects.filter(user=user, is_active=True).count(), 1)
-        self.assertTrue(BlacklistedToken.objects.filter(token__jti=previous_refresh).exists())
+        self.assertEqual(
+            UserSession.objects.filter(user=user, is_active=True).count(), 1
+        )
+        self.assertTrue(
+            BlacklistedToken.objects.filter(token__jti=previous_refresh).exists()
+        )
 
     def test_inactive_session_rejects_valid_access_token(self):
         user = self.create_user()
@@ -101,9 +109,17 @@ class RefreshTests(ApiCase):
         self.assertNotEqual(session.access_jti, old_access)
         self.assertNotEqual(session.refresh_jti, old_refresh)
         self.assertEqual(session.last_activity, next_activity)
-        self.assertEqual(AccessToken(response.cookies["access_token"].value)["jti"], session.access_jti)
-        self.assertEqual(RefreshToken(response.cookies["refresh_token"].value)["jti"], session.refresh_jti)
-        self.assertTrue(BlacklistedToken.objects.filter(token__jti=old_refresh).exists())
+        self.assertEqual(
+            AccessToken(response.cookies["access_token"].value)["jti"],
+            session.access_jti,
+        )
+        self.assertEqual(
+            RefreshToken(response.cookies["refresh_token"].value)["jti"],
+            session.refresh_jti,
+        )
+        self.assertTrue(
+            BlacklistedToken.objects.filter(token__jti=old_refresh).exists()
+        )
 
     def test_old_refresh_cookie_cannot_revive_rotated_session(self):
         user = self.create_user()

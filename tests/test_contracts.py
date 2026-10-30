@@ -26,22 +26,45 @@ class ContractTests(ApiCase):
                 path = prefix + str(pattern.pattern)
                 if isinstance(pattern, URLResolver):
                     yield from named(pattern.url_patterns, path)
-                elif isinstance(pattern, URLPattern) and pattern.name and path.startswith("api/"):
+                elif (
+                    isinstance(pattern, URLPattern)
+                    and pattern.name
+                    and path.startswith("api/")
+                ):
                     yield pattern.name
 
-        public = {"login", "refresh", "registration-request", "registration-verify", "registration-confirm", "password-reset-request", "password-reset-verify", "password-reset-confirm", "schema", "swagger-ui"}
+        public = {
+            "login",
+            "refresh",
+            "registration-request",
+            "registration-verify",
+            "registration-confirm",
+            "password-reset-request",
+            "password-reset-verify",
+            "password-reset-confirm",
+            "schema",
+            "swagger-ui",
+        }
         names = set(named(get_resolver().url_patterns))
         self.assertEqual(names - public, set(protected))
         for name, (method, path) in protected.items():
             with self.subTest(name=name):
                 self.assertEqual(resolve(path).url_name, name)
-                self.assertEqual(getattr(self.client, method)(path, {}, format="json").status_code, 401)
+                self.assertEqual(
+                    getattr(self.client, method)(path, {}, format="json").status_code,
+                    401,
+                )
 
     def test_unrouted_user_detail_and_update_remain_unavailable(self):
         user = self.create_user()
         self.login(user)
         self.assertEqual(self.client.get(f"/api/users/{user.pk}/").status_code, 404)
-        self.assertEqual(self.client.patch("/api/users/me/", {"name": "new"}, format="json").status_code, 405)
+        self.assertEqual(
+            self.client.patch(
+                "/api/users/me/", {"name": "new"}, format="json"
+            ).status_code,
+            405,
+        )
 
     def test_atomic_requests_is_disabled(self):
         self.assertFalse(connections["default"].settings_dict["ATOMIC_REQUESTS"])
@@ -54,7 +77,9 @@ class ContractTests(ApiCase):
             self.assertEqual(response.cookies[name]["samesite"], "Lax")
             self.assertFalse(response.cookies[name]["secure"])
 
-    @override_settings(SIMPLE_JWT={**settings.SIMPLE_JWT, "AUTH_COOKIE": "custom_access"})
+    @override_settings(
+        SIMPLE_JWT={**settings.SIMPLE_JWT, "AUTH_COOKIE": "custom_access"}
+    )
     def test_access_cookie_name_is_configurable_but_refresh_is_fixed(self):
         user = self.create_user()
         _, response = self.login(user)
@@ -63,7 +88,10 @@ class ContractTests(ApiCase):
         self.assertNotIn("access_token", response.cookies)
         self.assertEqual(self.client.get("/api/users/me/").status_code, 200)
 
-    @override_settings(SIMPLE_JWT={**settings.SIMPLE_JWT, "AUTH_COOKIE_SECURE": True}, CSRF_COOKIE_SECURE=True)
+    @override_settings(
+        SIMPLE_JWT={**settings.SIMPLE_JWT, "AUTH_COOKIE_SECURE": True},
+        CSRF_COOKIE_SECURE=True,
+    )
     def test_secure_cookies_under_production_flags(self):
         user = self.create_user()
         _, response = self.login(user)

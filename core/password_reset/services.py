@@ -45,9 +45,11 @@ class PasswordResetService:
     @staticmethod
     def confirm_reset(email: str, code: str, new_password: str) -> None:
         with transaction.atomic():
-            reset_code = PasswordReset.objects.select_for_update().filter(
-                user__email=email, user__is_active=True
-            ).first()
+            reset_code = (
+                PasswordReset.objects.select_for_update()
+                .filter(user__email=email, user__is_active=True)
+                .first()
+            )
             valid = reset_code is not None and reset_code.verify(code)
             if valid:
                 user = reset_code.user

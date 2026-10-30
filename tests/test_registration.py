@@ -15,7 +15,9 @@ class RegistrationTests(ApiCase):
     base_url = "/api/registration/"
 
     def request_code(self):
-        response = self.client.post(self.base_url + "request/", {"email": self.email}, format="json")
+        response = self.client.post(
+            self.base_url + "request/", {"email": self.email}, format="json"
+        )
         self.assertEqual(response.status_code, 201, response.data)
         return self.email_code()
 
@@ -29,7 +31,12 @@ class RegistrationTests(ApiCase):
     def test_verify_does_not_consume_and_confirm_creates_active_user(self):
         code = self.request_code()
         payload = {"email": self.email, "code": code}
-        self.assertEqual(self.client.post(self.base_url + "verify/", payload, format="json").status_code, 200)
+        self.assertEqual(
+            self.client.post(
+                self.base_url + "verify/", payload, format="json"
+            ).status_code,
+            200,
+        )
         record = EmailVerification.objects.get(user__email=self.email)
         self.assertFalse(record.used)
         response = self.client.post(
@@ -43,23 +50,48 @@ class RegistrationTests(ApiCase):
         self.assertTrue(user.check_password(self.password))
         record.refresh_from_db()
         self.assertTrue(record.used)
-        self.assertEqual(self.client.post(self.base_url + "confirm/", {**payload, "name": "Example Person", "password": self.password}, format="json").status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                self.base_url + "confirm/",
+                {**payload, "name": "Example Person", "password": self.password},
+                format="json",
+            ).status_code,
+            400,
+        )
 
     def test_five_wrong_verifications_exhaust_code(self):
         code = self.request_code()
         for attempt in range(5):
-            response = self.client.post(self.base_url + "verify/", {"email": self.email, "code": "000000" if code != "000000" else "999999"}, format="json")
+            response = self.client.post(
+                self.base_url + "verify/",
+                {
+                    "email": self.email,
+                    "code": "000000" if code != "000000" else "999999",
+                },
+                format="json",
+            )
             self.assertEqual(response.status_code, 400, attempt)
         record = EmailVerification.objects.get(user__email=self.email)
         self.assertEqual(record.attempts, 5)
         self.assertTrue(record.used)
-        self.assertEqual(self.client.post(self.base_url + "verify/", {"email": self.email, "code": code}, format="json").status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                self.base_url + "verify/",
+                {"email": self.email, "code": code},
+                format="json",
+            ).status_code,
+            400,
+        )
 
     def test_code_expires_after_fifteen_minutes(self):
         code = self.request_code()
         record = EmailVerification.objects.get(user__email=self.email)
         with patch("django.utils.timezone.now", return_value=record.expires_at):
-            response = self.client.post(self.base_url + "verify/", {"email": self.email, "code": code}, format="json")
+            response = self.client.post(
+                self.base_url + "verify/",
+                {"email": self.email, "code": code},
+                format="json",
+            )
         self.assertEqual(response.status_code, 400)
 
     def test_reissue_replaces_old_code_and_resets_expiry_and_usage(self):
@@ -69,25 +101,56 @@ class RegistrationTests(ApiCase):
         record.used = True
         record.save(update_fields=["used"])
         cache.clear()
-        with patch("django.utils.timezone.now", return_value=timezone.now() + timedelta(minutes=1)):
+        with patch(
+            "django.utils.timezone.now",
+            return_value=timezone.now() + timedelta(minutes=1),
+        ):
             current = self.request_code()
         record = EmailVerification.objects.get(user__email=self.email)
         self.assertNotEqual(record.pk, old_pk)
         self.assertGreater(record.expires_at, old_expiry)
         self.assertFalse(record.used)
         self.assertEqual(record.attempts, 0)
-        self.assertEqual(self.client.post(self.base_url + "verify/", {"email": self.email, "code": previous}, format="json").status_code, 400)
-        self.assertEqual(self.client.post(self.base_url + "verify/", {"email": self.email, "code": current}, format="json").status_code, 200)
+        self.assertEqual(
+            self.client.post(
+                self.base_url + "verify/",
+                {"email": self.email, "code": previous},
+                format="json",
+            ).status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.post(
+                self.base_url + "verify/",
+                {"email": self.email, "code": current},
+                format="json",
+            ).status_code,
+            200,
+        )
 
     def test_password_similarity_is_rejected(self):
         code = self.request_code()
-        response = self.client.post(self.base_url + "confirm/", {"email": self.email, "code": code, "name": "Example Person", "password": "Example Person"}, format="json")
+        response = self.client.post(
+            self.base_url + "confirm/",
+            {
+                "email": self.email,
+                "code": code,
+                "name": "Example Person",
+                "password": "Example Person",
+            },
+            format="json",
+        )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(User.objects.get(email=self.email).is_active)
 
     def test_delivery_failure_returns_503_and_rolls_back_new_user(self):
-        with patch("core.registration.services.send_email_token", side_effect=RuntimeError("mail down")):
-            response = self.client.post(self.base_url + "request/", {"email": self.email}, format="json")
+        with patch(
+            "core.registration.services.send_email_token",
+            side_effect=RuntimeError("mail down"),
+        ):
+            response = self.client.post(
+                self.base_url + "request/", {"email": self.email}, format="json"
+            )
         self.assertEqual(response.status_code, 503)
         self.assertFalse(User.objects.filter(email=self.email).exists())
 
@@ -95,9 +158,23 @@ class RegistrationTests(ApiCase):
 class RegistrationAttemptPersistenceTests(ApiTransactionCase):
     def test_failed_confirmation_commits_attempt_even_on_400(self):
         email = "new@example.com"
-        self.assertEqual(self.client.post("/api/registration/request/", {"email": email}, format="json").status_code, 201)
+        self.assertEqual(
+            self.client.post(
+                "/api/registration/request/", {"email": email}, format="json"
+            ).status_code,
+            201,
+        )
         correct = self.email_code()
         wrong = "000000" if correct != "000000" else "999999"
-        response = self.client.post("/api/registration/confirm/", {"email": email, "code": wrong, "name": "Example Person", "password": self.password}, format="json")
+        response = self.client.post(
+            "/api/registration/confirm/",
+            {
+                "email": email,
+                "code": wrong,
+                "name": "Example Person",
+                "password": self.password,
+            },
+            format="json",
+        )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(EmailVerification.objects.get(user__email=email).attempts, 1)

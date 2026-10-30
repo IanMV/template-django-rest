@@ -120,9 +120,18 @@ SPECTACULAR_SETTINGS = {
     "TAGS": [
         {"name": "auth", "description": "CSRF bootstrap, login, refresh and logout."},
         {"name": "sessions", "description": "List and deactivate device sessions."},
-        {"name": "registration", "description": "Request, verify and confirm registration."},
-        {"name": "password-reset", "description": "Request, verify and confirm password reset."},
-        {"name": "email-change", "description": "Request, verify and confirm an email change."},
+        {
+            "name": "registration",
+            "description": "Request, verify and confirm registration.",
+        },
+        {
+            "name": "password-reset",
+            "description": "Request, verify and confirm password reset.",
+        },
+        {
+            "name": "email-change",
+            "description": "Request, verify and confirm an email change.",
+        },
         {"name": "user", "description": "Current account and user list."},
     ],
     "AUTHENTICATION_WHITELIST": [

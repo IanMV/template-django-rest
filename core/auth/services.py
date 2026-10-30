@@ -33,9 +33,11 @@ class SessionService:
             raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN) from exc
 
         with transaction.atomic():
-            session = UserSession.objects.select_for_update().filter(
-                refresh_jti=old_jti, is_active=True
-            ).first()
+            session = (
+                UserSession.objects.select_for_update()
+                .filter(refresh_jti=old_jti, is_active=True)
+                .first()
+            )
             if not session:
                 raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
             serializer = serializer_factory(data={"refresh": refresh_token_str})
@@ -157,15 +159,19 @@ class SessionService:
 
 class AuthService:
     @staticmethod
-    def login_user(email, password, user_agent_string, ip_address, raw_access_token=None):
+    def login_user(
+        email, password, user_agent_string, ip_address, raw_access_token=None
+    ):
         limit_login_attempts(email, ip_address)
         previous_session = None
         if raw_access_token:
             try:
                 jti = str(AccessToken(raw_access_token).get("jti", ""))
-                previous_session = UserSession.objects.filter(
-                    access_jti=jti, is_active=True
-                ).select_related("user").first()
+                previous_session = (
+                    UserSession.objects.filter(access_jti=jti, is_active=True)
+                    .select_related("user")
+                    .first()
+                )
             except TokenError:
                 pass
         user = authenticate(email=email, password=password)
@@ -196,7 +202,9 @@ class AuthService:
                 refresh_jti=jti_refresh,
             )
         if previous_session:
-            SessionService.deactivate_session(previous_session.user, previous_session.pk)
+            SessionService.deactivate_session(
+                previous_session.user, previous_session.pk
+            )
 
         return {
             "refresh": refresh_token,

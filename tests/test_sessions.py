@@ -13,7 +13,9 @@ class SessionTests(ApiCase):
         self.assertEqual(response.status_code, 200)
         session.refresh_from_db()
         self.assertFalse(session.is_active)
-        self.assertTrue(BlacklistedToken.objects.filter(token__jti=session.refresh_jti).exists())
+        self.assertTrue(
+            BlacklistedToken.objects.filter(token__jti=session.refresh_jti).exists()
+        )
         for name in ("access_token", "refresh_token"):
             self.assertEqual(response.cookies[name]["max-age"], 0)
         self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
@@ -47,7 +49,9 @@ class SessionTests(ApiCase):
         self.assertEqual(response.status_code, 200)
         session.refresh_from_db()
         self.assertFalse(session.is_active)
-        self.assertTrue(BlacklistedToken.objects.filter(token__jti=session.refresh_jti).exists())
+        self.assertTrue(
+            BlacklistedToken.objects.filter(token__jti=session.refresh_jti).exists()
+        )
 
     def test_other_users_session_is_indistinguishable_from_missing(self):
         owner = self.create_user()
@@ -58,7 +62,9 @@ class SessionTests(ApiCase):
         session = UserSession.objects.get(user=stranger)
         denied = self.client.delete(f"/api/sessions/{session.pk}/")
         absent = self.client.delete("/api/sessions/999999/")
-        self.assertEqual((denied.status_code, denied.data), (absent.status_code, absent.data))
+        self.assertEqual(
+            (denied.status_code, denied.data), (absent.status_code, absent.data)
+        )
         self.assertEqual(denied.status_code, 404)
         session.refresh_from_db()
         self.assertTrue(session.is_active)

@@ -21,10 +21,15 @@ class BehaviorHelpers:
 
     def create_user(self, email="person@example.com", password=None, **fields):
         return User.objects.create_user(
-            email=email, password=password or self.password, name="Example Person", **fields
+            email=email,
+            password=password or self.password,
+            name="Example Person",
+            **fields,
         )
 
-    def login(self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser"):
+    def login(
+        self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser"
+    ):
         client = client or self.client
         bootstrap = client.get("/api/login/", REMOTE_ADDR=ip)
         self.assertEqual(bootstrap.status_code, 204)
@@ -46,11 +51,15 @@ class BehaviorHelpers:
         return code.group()
 
 
-@override_settings(MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}})
+@override_settings(
+    MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+)
 class ApiCase(BehaviorHelpers, TestCase):
     pass
 
 
-@override_settings(MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}})
+@override_settings(
+    MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+)
 class ApiTransactionCase(BehaviorHelpers, TransactionTestCase):
     pass
