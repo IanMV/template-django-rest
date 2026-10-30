@@ -105,8 +105,25 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_SAMESITE": "Lax",
 }
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Your API",
+    "TITLE": "Authentication API",
+    "DESCRIPTION": (
+        "Use the Swagger UI on the same origin as the API. Start with GET /api/login/ "
+        "to receive the CSRF cookie; POST /api/login/ with credentials to receive "
+        "HttpOnly access/refresh cookies. The browser sends cookies automatically; "
+        "send the csrftoken value in X-CSRFTOKEN for unsafe requests. Swagger UI "
+        "injects the CSRF header for same-origin requests. Do not paste HttpOnly "
+        "JWTs into Authorize: authenticate through the login operation instead."
+    ),
     "VERSION": "1.0.0",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "TAGS": [
+        {"name": "auth", "description": "CSRF bootstrap, login, refresh and logout."},
+        {"name": "sessions", "description": "List and deactivate device sessions."},
+        {"name": "registration", "description": "Request, verify and confirm registration."},
+        {"name": "password-reset", "description": "Request, verify and confirm password reset."},
+        {"name": "email-change", "description": "Request, verify and confirm an email change."},
+        {"name": "user", "description": "Current account and user list."},
+    ],
     "AUTHENTICATION_WHITELIST": [
         "core.auth.authenticate.CustomAuthentication",
     ],
