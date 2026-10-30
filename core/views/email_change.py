@@ -20,7 +20,7 @@ from core.spectacular_serializers import (
     RequestSentSerializer,
     ServiceUnavaibleSerializer,
 )
-from core.utils.cookies import get_auth_cookie_kwargs, get_auth_cookie_name
+from core.utils.cookies import clear_auth_cookies
 
 
 class EmailChangeRequestView(APIView):
@@ -90,12 +90,5 @@ class EmailChangeConfirmView(APIView):
             current_password=serializer.validated_data["password"],
         )
         response = Response({"detail": MSG_EMAIL_CHANGED}, status=status.HTTP_200_OK)
-        cookie_kwargs = get_auth_cookie_kwargs()
-        for name in (get_auth_cookie_name(), "refresh_token"):
-            response.delete_cookie(
-                name,
-                path=cookie_kwargs["path"],
-                domain=cookie_kwargs["domain"],
-                samesite=cookie_kwargs["samesite"],
-            )
+        clear_auth_cookies(response)
         return response

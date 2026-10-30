@@ -50,7 +50,11 @@ from core.spectacular_serializers import (
     UserSessionDeactivatedSerializer,
     UserSessionNotFoundSerializer,
 )
-from core.utils.cookies import get_auth_cookie_kwargs, get_auth_cookie_name
+from core.utils.cookies import (
+    clear_auth_cookies,
+    get_auth_cookie_kwargs,
+    get_auth_cookie_name,
+)
 
 # TODO: add description and summary to all of views
 
@@ -190,14 +194,7 @@ class LogoutView(APIView):
             except TokenError:
                 pass
         response = Response({"detail": MSG_LOGOUT_SUCCESSFUL}, status.HTTP_200_OK)
-        cookie_kwargs = get_auth_cookie_kwargs()
-        delete_kwargs = {
-            "path": cookie_kwargs.get("path", "/"),
-            "domain": cookie_kwargs.get("domain", None),
-            "samesite": cookie_kwargs.get("samesite", "Lax"),
-        }
-        response.delete_cookie(get_auth_cookie_name(), **delete_kwargs)
-        response.delete_cookie("refresh_token", **delete_kwargs)
+        clear_auth_cookies(response)
         return response
 
 
@@ -281,7 +278,9 @@ class RevokeAllSessionsView(APIView):
     )
     def post(self, request):
         SessionService.revoke_all_sessions(request.user)
-        return Response({"detail": MSG_USER_REVOKED_ALL_SESSIONS}, status.HTTP_200_OK)
+        response = Response({"detail": MSG_USER_REVOKED_ALL_SESSIONS}, status.HTTP_200_OK)
+        clear_auth_cookies(response)
+        return response
 
 
 class UserMeView(APIView):
@@ -355,7 +354,9 @@ class DeactivateSelfView(APIView):
     )
     def post(self, request):
         UserService.deactivate_user(request.user)
-        return Response({"detail": MSG_USER_DEACTIVATED}, status.HTTP_200_OK)
+        response = Response({"detail": MSG_USER_DEACTIVATED}, status.HTTP_200_OK)
+        clear_auth_cookies(response)
+        return response
 
 
 class UserUpdateSelfView(APIView):

@@ -22,3 +22,14 @@ def get_auth_cookie_kwargs(is_refresh=False):
 
 def get_auth_cookie_name():
     return settings.SIMPLE_JWT.get("AUTH_COOKIE", "access_token")
+
+
+def clear_auth_cookies(response):
+    cookie_kwargs = get_auth_cookie_kwargs()
+    for name in (get_auth_cookie_name(), "refresh_token"):
+        response.delete_cookie(
+            name,
+            path=cookie_kwargs["path"],
+            domain=cookie_kwargs["domain"],
+            samesite=cookie_kwargs["samesite"],
+        )

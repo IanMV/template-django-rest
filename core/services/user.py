@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import (
@@ -78,7 +79,11 @@ class SessionService:
     ):
         return UserSession.objects.filter(
             refresh_jti=old_refresh_jti, is_active=True
-        ).update(access_jti=new_access_jti, refresh_jti=new_refresh_jti)
+        ).update(
+            access_jti=new_access_jti,
+            refresh_jti=new_refresh_jti,
+            last_activity=timezone.now(),
+        )
 
 
 class AuthService:
@@ -136,4 +141,6 @@ class UserService:
 
     @staticmethod
     def deactivate_user(requesting_user: User):
-        requesting_user.deactivate()
+        with transaction.atomic():
+            requesting_user.deactivate()
+            SessionService.revoke_all_sessions(requesting_user)
