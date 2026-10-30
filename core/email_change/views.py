@@ -24,7 +24,11 @@ from core.shared.docs import (
     ThrottledSerializer,
     ValidationErrorResponse,
 )
-from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_EMAIL_CHANGED
+from core.shared.response_messages import (
+    MSG_CODE_SENT,
+    MSG_CODE_VALID,
+    MSG_EMAIL_CHANGED,
+)
 
 
 class EmailChangeRequestView(APIView):

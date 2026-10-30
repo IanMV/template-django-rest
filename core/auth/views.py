@@ -32,6 +32,7 @@ from core.shared.response_messages import (
     MSG_REFRESH_TOKENS_SUCCESSFUL,
 )
 
+
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]

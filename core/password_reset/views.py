@@ -20,7 +20,11 @@ from core.shared.docs import (
     ThrottledSerializer,
     ValidationErrorResponse,
 )
-from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_PASWORD_RESET
+from core.shared.response_messages import (
+    MSG_CODE_SENT,
+    MSG_CODE_VALID,
+    MSG_PASWORD_RESET,
+)
 
 
 class PasswordResetRequestView(APIView):

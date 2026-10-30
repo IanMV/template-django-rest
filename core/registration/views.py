@@ -20,7 +20,11 @@ from core.shared.docs import (
     UserCreatedSerializer,
     ValidationErrorResponse,
 )
-from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_USER_CREATED
+from core.shared.response_messages import (
+    MSG_CODE_SENT,
+    MSG_CODE_VALID,
+    MSG_USER_CREATED,
+)
 
 
 class RegistrationRequestView(APIView):

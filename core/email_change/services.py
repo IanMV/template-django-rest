@@ -3,12 +3,12 @@ import secrets
 from django.db import transaction
 from rest_framework import serializers
 
-from core.shared.exceptions import ServiceUnavailable
-from core.models.email_change import EmailChange
-from core.models.user import User
 from core.auth.rate_limit import limit_code_requests
 from core.auth.services import SessionService
+from core.models.email_change import EmailChange
+from core.models.user import User
 from core.shared.email_token_sender import send_email_token
+from core.shared.exceptions import ServiceUnavailable
 
 
 class EmailChangeService:
