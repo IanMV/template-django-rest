@@ -1,5 +1,5 @@
 from django.middleware import csrf
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -15,12 +15,16 @@ from core.auth.cookies import (
 from core.auth.serializers import LoginSerializer
 from core.auth.services import AuthService, SessionService
 from core.shared.docs import (
+    CsrfFailureExample,
+    CsrfForbiddenSerializer,
     IncorrectAuthenticationsCredentialsSerializer,
     InvalidOrExpiredRefreshTokenSerializer,
-    LoginSucessfulSerializer,
+    LoginSuccessfulSerializer,
     LogoutSuccessfulSerializer,
     NotAuthenticatedSerializer,
     RefreshTokensSuccessfulSerializer,
+    ThrottledSerializer,
+    ValidationErrorResponse,
 )
 from core.shared.response_messages import (
     MSG_LOGIN_SUCCESSFUL,
@@ -28,26 +32,50 @@ from core.shared.response_messages import (
     MSG_REFRESH_TOKENS_SUCCESSFUL,
 )
 
-# TODO: add description and summary to all of views
-
-# TODO: adicionar responses aos novos endpoints de resfresh e arrumar MSG_... deles nos erros (estão em português e sem gettext_lazy)
-
-
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        tags=["auth"],
+        summary="Get the CSRF cookie",
+        description="Step 1: call this before login. The empty response sets the readable csrftoken cookie; send its value as X-CSRFTOKEN on POST /api/login/.",
+        request=None,
+        auth=[],
+        responses={
+            204: OpenApiResponse(response=None, description="No body; Set-Cookie: csrftoken.")
+        },
+    )
     def get(self, request):
         csrf.get_token(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
-        summary="Authenticate user and set JWT tokens in the browser cookies",
-        description="When a user makes a request, the default authentication class defined in the DRF settings is not applied; that is, anyone can perform the operation. When the login is successful, JWT cookies are set in the browser. Considering different cases:\n\nA - User is not yet logged in (no cookies in the browser):\nThe operation proceeds, verifying the credentials (responses below) and setting the cookies.\n\nB - The user is already logged in (already has cookies in the browser):\nThe operation also proceeds normally too, however, the access and refresh cookies set in the previous login are invalidated within the blacklist.",
+        tags=["auth"],
+        summary="Log in and set authentication cookies",
+        description="Step 2: after GET /api/login/, send the CSRF header and email/password. A successful response contains only detail and sets HttpOnly access_token and refresh_token cookies (the access cookie name follows SIMPLE_JWT.AUTH_COOKIE). Existing matching sessions are revoked. Do not enter a JWT in Swagger's cookie authorization field; use the browser cookies.",
+        auth=[{"csrfHeader": []}],
+        examples=[
+            OpenApiExample(
+                "Login credentials",
+                value={"email": "person@example.com", "password": "your-password"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Invalid credentials",
+                value={"detail": "Incorrect authentication credentials."},
+                response_only=True,
+                status_codes=["401"],
+            ),
+            CsrfFailureExample,
+        ],
         request=LoginSerializer,
         responses={
-            200: LoginSucessfulSerializer,
+            200: LoginSuccessfulSerializer,
+            400: ValidationErrorResponse,
             401: IncorrectAuthenticationsCredentialsSerializer,
+            403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
         },
     )
     def post(self, request):
@@ -83,11 +111,27 @@ class CustomTokenRefreshView(TokenRefreshView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        summary="Refresh the user session using refresh token setted in the user browser",
-        request=LoginSerializer,
+        tags=["auth"],
+        summary="Rotate authentication cookies",
+        description="Step 3: after login, send the refresh_token cookie and CSRF header. No JSON request body or tokens in the response; Set-Cookie replaces both access and refresh cookies. This works even after the access token expires.",
+        auth=[{"refreshCookie": [], "csrfHeader": []}],
+        request=None,
+        examples=[
+            OpenApiExample(
+                "Expired refresh cookie",
+                value={"detail": "Invalid or expired refresh token."},
+                response_only=True,
+                status_codes=["401"],
+            ),
+            CsrfFailureExample,
+        ],
         responses={
             200: RefreshTokensSuccessfulSerializer,
-            401: InvalidOrExpiredRefreshTokenSerializer,
+            401: OpenApiResponse(
+                response=InvalidOrExpiredRefreshTokenSerializer,
+                description="Missing, expired, invalid or revoked refresh cookie. Missing/revoked cookies return detail only; invalid tokens may include code.",
+            ),
+            403: CsrfForbiddenSerializer,
         },
     )
     def post(self, request, *args, **kwargs):
@@ -116,12 +160,15 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        tags=["auth"],
         summary="Log out the user current session",
-        description="Its purpose is to log the user out of their current session. It adds the refresh and access tokens defined in the user's browser to the blacklist table. It also instructs the browser to delete the cookies related to authentication.",
+        description="Revoke the current session and clear the access/refresh cookies. Send X-CSRFTOKEN with the browser cookies.",
         request=None,
+        examples=[CsrfFailureExample],
         responses={
             200: LogoutSuccessfulSerializer,
             401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
         },
     )
     def post(self, request):

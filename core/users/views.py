@@ -7,6 +7,8 @@ from rest_framework.views import APIView
 from core.auth.cookies import clear_auth_cookies
 from core.auth.services import SessionService
 from core.shared.docs import (
+    CsrfFailureExample,
+    CsrfForbiddenSerializer,
     NotAuthenticatedSerializer,
     UserDeactivatedSerializer,
     UserRevokedAllSessionsSerializer,
@@ -23,12 +25,15 @@ class RevokeAllSessionsView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        tags=["sessions"],
         summary="Revoke all active sessions",
         description="Instantly revokes all active sessions for the requesting user across all devices by blacklisting all outstanding refresh tokens and setting all session records to inactive.",
         request=None,
+        examples=[CsrfFailureExample],
         responses={
             200: UserRevokedAllSessionsSerializer,
             401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
         },
     )
     def post(self, request):
@@ -42,12 +47,14 @@ class UserMeView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        tags=["user"],
         summary="Get current user profile",
         description="Retrieves the profile information for the currently authenticated user.",
         responses={
             200: UserListRetrieveSerializer,
             401: NotAuthenticatedSerializer,
         },
+        request=None,
     )
     def get(self, request):
         serializer = UserListRetrieveSerializer(request.user)
@@ -58,12 +65,14 @@ class UserListView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        tags=["user"],
         summary="List users",
         description="Retrieves a list of users registered in the system based on the authorization rules evaluated in the service layer.",
         responses={
             200: UserListRetrieveSerializer(many=True),
             401: NotAuthenticatedSerializer,
         },
+        request=None,
     )
     def get(self, request):
         users = UserService.list_users(requesting_user=request.user)
@@ -75,12 +84,15 @@ class DeactivateSelfView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        tags=["user"],
         summary="Deactivate own user account",
         description="Deactivates the authenticated user's account, revoking all active sessions and preventing subsequent authentication attempts.",
         request=None,
+        examples=[CsrfFailureExample],
         responses={
             200: UserDeactivatedSerializer,
             401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
         },
     )
     def post(self, request):

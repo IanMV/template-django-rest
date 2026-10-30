@@ -15,7 +15,7 @@ class LoginSerializer(serializers.Serializer):
 class UserSessionSerializer(serializers.ModelSerializer):
     device = serializers.CharField(source="device_name", read_only=True)
     ip = serializers.CharField(source="ip_address", read_only=True)
-    current = serializers.BooleanField(read_only=True)
+    current = serializers.BooleanField(read_only=True, help_text="Whether this is the session making the request.")
 
     class Meta:
         model = UserSession

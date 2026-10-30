@@ -9,6 +9,8 @@ from core.auth.serializers import UserSessionSerializer
 from core.auth.services import SessionService
 from core.shared.docs import (
     CannotDeactivateCurrentSessionSerializer,
+    CsrfFailureExample,
+    CsrfForbiddenSerializer,
     NotAuthenticatedSerializer,
     UserSessionDeactivatedSerializer,
     UserSessionNotFoundSerializer,
@@ -20,13 +22,16 @@ class UserSessionsDeactivateView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Deactivate a session",
-        description="",
+        tags=["sessions"],
+        summary="Deactivate another session",
+        description="Find the session id with GET /api/sessions/. The current session cannot be deactivated here; use logout instead.",
         request=None,
+        examples=[CsrfFailureExample],
         responses={
             200: UserSessionDeactivatedSerializer,
             400: CannotDeactivateCurrentSessionSerializer,
             401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
             404: UserSessionNotFoundSerializer,
         },
         parameters=[
@@ -35,6 +40,7 @@ class UserSessionsDeactivateView(APIView):
                 type=int,
                 location=OpenApiParameter.PATH,
                 required=True,
+                description="Integer id returned by GET /api/sessions/.",
             )
         ],
     )
@@ -49,6 +55,7 @@ class UserSessionsGetView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        tags=["sessions"],
         summary="List active user sessions",
         description="Returns all active sessions of the requesting user. And, indicates which session is the current.",
         request=None,

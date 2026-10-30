@@ -1,14 +1,9 @@
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.shared.response_messages import (
-    MSG_CODE_SENT,
-    MSG_CODE_VALID,
-    MSG_USER_CREATED,
-)
 from core.registration.serializers import (
     RegistrationConfirmSerializer,
     RegistrationRequestSerializer,
@@ -16,13 +11,16 @@ from core.registration.serializers import (
 )
 from core.registration.services import RegistrationService
 from core.shared.docs import (
-    CodeIsInvalidSerializer,
     CodeIsValidSerializer,
-    EmailAlreadyExistsSerializer,
+    InvalidCodeExample,
+    RateLimitedExample,
     RequestSentSerializer,
-    ServiceUnavaibleSerializer,
+    ServiceUnavailableSerializer,
+    ThrottledSerializer,
     UserCreatedSerializer,
+    ValidationErrorResponse,
 )
+from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_USER_CREATED
 
 
 class RegistrationRequestView(APIView):
@@ -30,12 +28,25 @@ class RegistrationRequestView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        summary="Step 1: Request registration code",
+        tags=["registration"],
+        summary="Request a registration code",
+        description="Step 1 of 3: submit an email. A six-digit code is sent to that address; request again after the cooldown to replace an expired code.",
         request=RegistrationRequestSerializer,
+        examples=[
+            OpenApiExample("Registration email", value={"email": "person@example.com"}, request_only=True),
+            OpenApiExample(
+                "Email already active",
+                value={"email": "This account is already active."},
+                response_only=True,
+                status_codes=["400"],
+            ),
+            RateLimitedExample,
+        ],
         responses={
-            200: RequestSentSerializer,
-            400: EmailAlreadyExistsSerializer,
-            503: ServiceUnavaibleSerializer,
+            201: RequestSentSerializer,
+            400: ValidationErrorResponse,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
@@ -54,11 +65,17 @@ class RegistrationVerifyView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        summary="Step 2: Verify registration code",
+        tags=["registration"],
+        summary="Verify the registration code",
+        description="Step 2 of 3: check the six-digit email code without consuming it. Invalid attempts count toward the five-attempt limit.",
         request=RegistrationVerifySerializer,
+        examples=[
+            OpenApiExample("Verify registration", value={"email": "person@example.com", "code": "123456"}, request_only=True),
+            InvalidCodeExample,
+        ],
         responses={
             200: CodeIsValidSerializer,
-            400: CodeIsInvalidSerializer,
+            400: ValidationErrorResponse,
         },
     )
     def post(self, request):
@@ -77,11 +94,17 @@ class RegistrationConfirmView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        summary="Step 3: Complete registration",
+        tags=["registration"],
+        summary="Confirm registration",
+        description="Step 3 of 3: send the same email/code with a name and password. Success creates an active user and consumes the code; no authentication cookies are set.",
         request=RegistrationConfirmSerializer,
+        examples=[
+            OpenApiExample("Confirm registration", value={"email": "person@example.com", "code": "123456", "name": "Example Person", "password": "StrongPass!4693$"}, request_only=True),
+            InvalidCodeExample,
+        ],
         responses={
             200: UserCreatedSerializer,
-            400: CodeIsInvalidSerializer,
+            400: ValidationErrorResponse,
         },
     )
     def post(self, request):

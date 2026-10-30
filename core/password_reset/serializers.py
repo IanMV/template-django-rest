@@ -10,12 +10,12 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 class PasswordResetVerifySerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-    code = serializers.CharField(max_length=6, min_length=6, required=True)
+    code = serializers.CharField(max_length=6, min_length=6, required=True, help_text="Six-digit code sent to the account email.")
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-    code = serializers.CharField(max_length=6, min_length=6, required=True)
+    code = serializers.CharField(max_length=6, min_length=6, required=True, help_text="Six-digit code sent to the account email.")
     new_password = serializers.CharField(
         write_only=True,
         required=True,

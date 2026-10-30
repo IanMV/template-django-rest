@@ -1,8 +1,7 @@
-from drf_spectacular.utils import inline_serializer
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, inline_serializer
 from rest_framework.exceptions import (
     AuthenticationFailed,
     NotAuthenticated,
-    PermissionDenied,
 )
 from rest_framework.serializers import CharField
 
@@ -29,8 +28,8 @@ from core.shared.response_messages import (
     MSG_USER_SESSION_NOT_FOUND,
 )
 
-ServiceUnavaibleSerializer = inline_serializer(
-    "ServiceUnavaibleSerializer",
+ServiceUnavailableSerializer = inline_serializer(
+    "ServiceUnavailableResponse",
     {
         "detail": CharField(default=MSG_SERVICE_UNAVAILABLE),
     },
@@ -96,17 +95,17 @@ IncorrectAuthenticationsCredentialsSerializer = inline_serializer(
 )
 
 
-PermissionDeniedSerializer = inline_serializer(
-    "PermissionDeniedSerializer",
+CsrfForbiddenSerializer = inline_serializer(
+    "CsrfForbiddenResponse",
     {
-        "detail": CharField(default=PermissionDenied().default_detail),
+        "detail": CharField(),
     },
 )
 
 NewEmailAlreadyExistsSerializer = inline_serializer(
     "NewEmailAlreadyExistsSerializer",
     fields={
-        "new-email": CharField(
+        "new_email": CharField(
             default=MSG_EMAIL_ALREADY_EXIST,
         )
     },
@@ -115,7 +114,7 @@ NewEmailAlreadyExistsSerializer = inline_serializer(
 NewEmailChangedSerializer = inline_serializer(
     "NewEmailChangedSerializer",
     fields={
-        "new-email": CharField(
+        "detail": CharField(
             default=MSG_EMAIL_CHANGED,
         )
     },
@@ -135,8 +134,8 @@ UserRevokedAllSessionsSerializer = inline_serializer(
     },
 )
 
-LoginSucessfulSerializer = inline_serializer(
-    "LoginSuccsesfulResponse",
+LoginSuccessfulSerializer = inline_serializer(
+    "LoginSuccessfulResponse",
     {"detail": CharField(default=MSG_LOGIN_SUCCESSFUL)},
 )
 
@@ -186,6 +185,7 @@ InvalidOrExpiredRefreshTokenSerializer = inline_serializer(
     "InvalidOrExpiredRefreshTokenSerializer",
     {
         "detail": CharField(default=MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN),
+        "code": CharField(required=False),
     },
 )
 
@@ -194,4 +194,42 @@ SessionRevokedOrInactiveSerializer = inline_serializer(
     {
         "detail": CharField(default=MSG_SESSION_REVOKED_OR_INACTIVE),
     },
+)
+
+ThrottledSerializer = inline_serializer(
+    "ThrottledResponse", {"detail": CharField()}
+)
+
+ValidationErrorResponse = OpenApiResponse(
+    response={
+        "type": "object",
+        "additionalProperties": {
+            "oneOf": [
+                {"type": "string"},
+                {"type": "array", "items": {"type": "string"}},
+            ]
+        },
+    },
+    description="Validation errors keyed by input field, or by detail.",
+)
+
+InvalidCodeExample = OpenApiExample(
+    "Invalid or expired code",
+    value={"code": str(MSG_CODE_INVALID)},
+    response_only=True,
+    status_codes=["400"],
+)
+
+CsrfFailureExample = OpenApiExample(
+    "Missing CSRF header",
+    value={"detail": "CSRF Failed: CSRF token missing."},
+    response_only=True,
+    status_codes=["403"],
+)
+
+RateLimitedExample = OpenApiExample(
+    "Too many requests",
+    value={"detail": "Request was throttled. Expected available in 60 seconds."},
+    response_only=True,
+    status_codes=["429"],
 )

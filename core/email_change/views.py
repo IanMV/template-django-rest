@@ -1,10 +1,10 @@
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_EMAIL_CHANGED
+from core.auth.cookies import clear_auth_cookies
 from core.email_change.serializers import (
     EmailChangeConfirmSerializer,
     EmailChangeRequestSerializer,
@@ -12,28 +12,47 @@ from core.email_change.serializers import (
 )
 from core.email_change.services import EmailChangeService
 from core.shared.docs import (
-    CodeIsInvalidSerializer,
     CodeIsValidSerializer,
-    NewEmailAlreadyExistsSerializer,
+    CsrfFailureExample,
+    CsrfForbiddenSerializer,
+    InvalidCodeExample,
     NewEmailChangedSerializer,
     NotAuthenticatedSerializer,
+    RateLimitedExample,
     RequestSentSerializer,
-    ServiceUnavaibleSerializer,
+    ServiceUnavailableSerializer,
+    ThrottledSerializer,
+    ValidationErrorResponse,
 )
-from core.auth.cookies import clear_auth_cookies
+from core.shared.response_messages import MSG_CODE_SENT, MSG_CODE_VALID, MSG_EMAIL_CHANGED
 
 
 class EmailChangeRequestView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Step 1: Request e-mail change",
+        tags=["email-change"],
+        summary="Request an email change code",
+        description="Step 1 of 3: while authenticated, submit the new email address. A six-digit code is sent to the new address; send X-CSRFTOKEN.",
         request=EmailChangeRequestSerializer,
+        examples=[
+            OpenApiExample("New email", value={"new_email": "new@example.com"}, request_only=True),
+            OpenApiExample(
+                "Email already in use",
+                value={"new_email": "This e-mail is already in use."},
+                response_only=True,
+                status_codes=["400"],
+            ),
+            CsrfFailureExample,
+            RateLimitedExample,
+        ],
         responses={
             200: RequestSentSerializer,
-            400: NewEmailAlreadyExistsSerializer,
+            400: ValidationErrorResponse,
             401: NotAuthenticatedSerializer,
-            503: ServiceUnavaibleSerializer,
+            403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
@@ -52,11 +71,20 @@ class EmailChangeVerifyView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Step 2: Verify e-mail change code",
+        tags=["email-change"],
+        summary="Verify the new email code",
+        description="Step 2 of 3: verify the six-digit code without consuming it. Requires the access cookie and X-CSRFTOKEN.",
         request=EmailChangeVerifySerializer,
+        examples=[
+            OpenApiExample("Verify email change", value={"code": "123456"}, request_only=True),
+            InvalidCodeExample,
+            CsrfFailureExample,
+        ],
         responses={
             200: CodeIsValidSerializer,
-            400: CodeIsInvalidSerializer,
+            400: ValidationErrorResponse,
+            401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
         },
     )
     def post(self, request):
@@ -73,11 +101,20 @@ class EmailChangeConfirmView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Step 3: Confirm e-mail change",
+        tags=["email-change"],
+        summary="Confirm the new email",
+        description="Step 3 of 3: send the code and current password. Success changes the email, revokes all sessions and clears access/refresh cookies; log in again with the new email.",
         request=EmailChangeConfirmSerializer,
+        examples=[
+            OpenApiExample("Confirm email change", value={"code": "123456", "password": "current-password"}, request_only=True),
+            InvalidCodeExample,
+            CsrfFailureExample,
+        ],
         responses={
             200: NewEmailChangedSerializer,
-            400: CodeIsInvalidSerializer,
+            400: ValidationErrorResponse,
+            401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
         },
     )
     def post(self, request):
