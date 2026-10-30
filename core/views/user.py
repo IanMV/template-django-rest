@@ -73,6 +73,10 @@ class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    def get(self, request):
+        csrf.get_token(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @extend_schema(
         summary="Authenticate user and set JWT tokens in the browser cookies",
         description="When a user makes a request, the default authentication class defined in the DRF settings is not applied; that is, anyone can perform the operation. When the login is successful, JWT cookies are set in the browser. Considering different cases:\n\nA - User is not yet logged in (no cookies in the browser):\nThe operation proceeds, verifying the credentials (responses below) and setting the cookies.\n\nB - The user is already logged in (already has cookies in the browser):\nThe operation also proceeds normally too, however, the access and refresh cookies set in the previous login are invalidated within the blacklist.",
@@ -83,8 +87,20 @@ class LoginView(APIView):
         },
     )
     def post(self, request):
+        enforce_csrf(request)
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        previous_session = None
+        raw_access_token = request.COOKIES.get(get_auth_cookie_name())
+        if raw_access_token:
+            try:
+                jti = str(AccessToken(raw_access_token).get("jti", ""))
+                previous_session = UserSession.objects.filter(
+                    access_jti=jti, is_active=True
+                ).select_related("user").first()
+            except TokenError:
+                pass
 
         token_data = AuthService.login_user(
             email=serializer.validated_data.get("email"),
@@ -92,6 +108,10 @@ class LoginView(APIView):
             user_agent_string=request.META.get("HTTP_USER_AGENT", ""),
             ip_address=request.META.get("REMOTE_ADDR"),
         )
+        if previous_session:
+            SessionService.deactivate_session(
+                previous_session.user, previous_session.pk
+            )
 
         response = Response({"detail": MSG_LOGIN_SUCCESSFUL}, status.HTTP_200_OK)
         access_cookie_kwargs = get_auth_cookie_kwargs(is_refresh=False)
