@@ -41,7 +41,9 @@ class EmailChangeRequestView(APIView):
         serializer.is_valid(raise_exception=True)
 
         EmailChangeService.request_change(
-            user=request.user, new_email=serializer.validated_data["new_email"]
+            user=request.user,
+            new_email=serializer.validated_data["new_email"],
+            ip_address=request.META.get("REMOTE_ADDR"),
         )
         return Response({"detail": MSG_CODE_SENT}, status=status.HTTP_200_OK)
 

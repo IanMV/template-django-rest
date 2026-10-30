@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from user_agents import parse
 
 from core.models.user import User, UserSession
+from core.services.rate_limit import limit_login_attempts
 
 
 class SessionService:
@@ -83,6 +84,7 @@ class SessionService:
 class AuthService:
     @staticmethod
     def login_user(email, password, user_agent_string, ip_address):
+        limit_login_attempts(email, ip_address)
         user = authenticate(email=email, password=password)
 
         if not user or not user.is_active:

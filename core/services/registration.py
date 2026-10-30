@@ -9,14 +9,15 @@ from core.models.user import User
 from core.response_messages import (
     MSG_CODE_INVALID,
     MSG_EMAIL_ALREADY_EXIST,
-    MSG_SERVICE_UNAVAILABLE,
 )
+from core.services.rate_limit import limit_code_requests
 from core.utils.email_token_sender import send_email_token
 
 
 class RegistrationService:
     @staticmethod
-    def request_registration(email: str) -> None:
+    def request_registration(email: str, ip_address: str | None = None) -> None:
+        limit_code_requests("registration", email, ip_address)
         raw_code = f"{secrets.randbelow(1000000):06d}"
         try:
             with transaction.atomic():

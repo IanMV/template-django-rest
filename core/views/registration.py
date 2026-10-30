@@ -43,7 +43,8 @@ class RegistrationRequestView(APIView):
         serializer.is_valid(raise_exception=True)
 
         RegistrationService.request_registration(
-            email=serializer.validated_data["email"]
+            email=serializer.validated_data["email"],
+            ip_address=request.META.get("REMOTE_ADDR"),
         )
         return Response({"detail": MSG_CODE_SENT}, status.HTTP_201_CREATED)
 

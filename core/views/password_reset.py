@@ -36,7 +36,9 @@ class PasswordResetRequestView(APIView):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        PasswordResetService.request_reset(serializer.validated_data["email"])
+        PasswordResetService.request_reset(
+            serializer.validated_data["email"], request.META.get("REMOTE_ADDR")
+        )
 
         return Response(
             {"detail": MSG_CODE_SENT},
