@@ -1,0 +1,56 @@
+import re
+
+from django.core import mail
+from django.core.cache import cache
+from django.test import TestCase, TransactionTestCase, override_settings
+from rest_framework.test import APIClient
+
+from core.models.user import User
+
+
+class BehaviorHelpers:
+    password = "StrongPass!4693$"
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.client = self.new_client()
+
+    def new_client(self):
+        return APIClient(enforce_csrf_checks=True)
+
+    def create_user(self, email="person@example.com", password=None, **fields):
+        return User.objects.create_user(
+            email=email, password=password or self.password, name="Example Person", **fields
+        )
+
+    def login(self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser"):
+        client = client or self.client
+        bootstrap = client.get("/api/login/", REMOTE_ADDR=ip)
+        self.assertEqual(bootstrap.status_code, 204)
+        client.credentials(HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
+        response = client.post(
+            "/api/login/",
+            {"email": user.email, "password": password or self.password},
+            format="json",
+            REMOTE_ADDR=ip,
+            HTTP_USER_AGENT=agent,
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        return client, response
+
+    def email_code(self):
+        self.assertTrue(mail.outbox)
+        code = re.search(r"(?<!\d)\d{6}(?!\d)", mail.outbox[-1].body)
+        self.assertIsNotNone(code)
+        return code.group()
+
+
+@override_settings(MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}})
+class ApiCase(BehaviorHelpers, TestCase):
+    pass
+
+
+@override_settings(MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}})
+class ApiTransactionCase(BehaviorHelpers, TransactionTestCase):
+    pass
