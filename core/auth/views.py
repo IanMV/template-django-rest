@@ -13,7 +13,12 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from core.authenticate import enforce_csrf
+from core.auth.authenticate import enforce_csrf
+from core.auth.cookies import (
+    clear_auth_cookies,
+    get_auth_cookie_kwargs,
+    get_auth_cookie_name,
+)
 from core.models.user import User, UserSession
 from core.shared.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
@@ -29,13 +34,13 @@ from core.shared.response_messages import (
     MSG_USER_SESSION_DEACTIVATED,
     MSG_USER_SESSION_NOT_FOUND,
 )
-from core.serializers.user import (
+from core.auth.serializers import (
     LoginSerializer,
     UserListRetrieveSerializer,
     UserSessionSerializer,
     UserUpdateSelfSerializer,
 )
-from core.services.user import AuthService, SessionService, UserService
+from core.auth.services import AuthService, SessionService, UserService
 from core.shared.docs import (
     CannotDeactivateCurrentSessionSerializer,
     IncorrectAuthenticationsCredentialsSerializer,
@@ -49,11 +54,6 @@ from core.shared.docs import (
     UserRevokedAllSessionsSerializer,
     UserSessionDeactivatedSerializer,
     UserSessionNotFoundSerializer,
-)
-from core.utils.cookies import (
-    clear_auth_cookies,
-    get_auth_cookie_kwargs,
-    get_auth_cookie_name,
 )
 
 # TODO: add description and summary to all of views

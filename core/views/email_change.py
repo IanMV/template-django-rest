@@ -20,7 +20,7 @@ from core.shared.docs import (
     RequestSentSerializer,
     ServiceUnavaibleSerializer,
 )
-from core.utils.cookies import clear_auth_cookies
+from core.auth.cookies import clear_auth_cookies
 
 
 class EmailChangeRequestView(APIView):

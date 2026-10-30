@@ -7,8 +7,8 @@ from core.shared.exceptions import ServiceUnavailable
 from core.models.password_reset import PasswordReset
 from core.models.user import User
 from core.shared.response_messages import MSG_CODE_INVALID
-from core.services.rate_limit import limit_code_requests
-from core.services.user import SessionService
+from core.auth.rate_limit import limit_code_requests
+from core.auth.services import SessionService
 from core.shared.email_token_sender import send_email_token
 
 

@@ -74,7 +74,7 @@ class CustomAuthentication(JWTAuthentication):
 
 
 class CustomAuthenticationScheme(OpenApiAuthenticationExtension):
-    target_class = "core.authenticate.CustomAuthentication"
+    target_class = "core.auth.authenticate.CustomAuthentication"
     name = "customCookieAuth"
 
     def get_security_definition(self, auto_schema):

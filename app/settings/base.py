@@ -85,7 +85,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "core.authenticate.CustomAuthentication",
+        "core.auth.authenticate.CustomAuthentication",
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
@@ -108,6 +108,6 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Your API",
     "VERSION": "1.0.0",
     "AUTHENTICATION_WHITELIST": [
-        "core.authenticate.CustomAuthentication",
+        "core.auth.authenticate.CustomAuthentication",
     ],
 }

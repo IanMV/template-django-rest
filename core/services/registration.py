@@ -10,7 +10,7 @@ from core.shared.response_messages import (
     MSG_CODE_INVALID,
     MSG_EMAIL_ALREADY_EXIST,
 )
-from core.services.rate_limit import limit_code_requests
+from core.auth.rate_limit import limit_code_requests
 from core.shared.email_token_sender import send_email_token
 
 

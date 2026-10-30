@@ -6,8 +6,8 @@ from rest_framework import serializers
 from core.shared.exceptions import ServiceUnavailable
 from core.models.email_change import EmailChange
 from core.models.user import User
-from core.services.rate_limit import limit_code_requests
-from core.services.user import SessionService
+from core.auth.rate_limit import limit_code_requests
+from core.auth.services import SessionService
 from core.shared.email_token_sender import send_email_token
 
 

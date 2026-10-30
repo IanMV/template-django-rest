@@ -20,7 +20,7 @@ from core.views.registration import (
     RegistrationRequestView,
     RegistrationVerifyView,
 )
-from core.views.user import (
+from core.auth.views import (
     CustomTokenRefreshView,
     DeactivateSelfView,
     LoginView,

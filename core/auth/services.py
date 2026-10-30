@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from user_agents import parse
 
 from core.models.user import User, UserSession
-from core.services.rate_limit import limit_login_attempts
+from core.auth.rate_limit import limit_login_attempts
 
 
 class SessionService:
