@@ -9,12 +9,12 @@ from core.shared.response_messages import (
     MSG_CODE_VALID,
     MSG_USER_CREATED,
 )
-from core.serializers.registration import (
+from core.registration.serializers import (
     RegistrationConfirmSerializer,
     RegistrationRequestSerializer,
     RegistrationVerifySerializer,
 )
-from core.services.registration import RegistrationService
+from core.registration.services import RegistrationService
 from core.shared.docs import (
     CodeIsInvalidSerializer,
     CodeIsValidSerializer,

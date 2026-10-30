@@ -15,7 +15,7 @@ from core.views.password_reset import (
     PasswordResetRequestView,
     PasswordResetVerifyView,
 )
-from core.views.registration import (
+from core.registration.views import (
     RegistrationConfirmView,
     RegistrationRequestView,
     RegistrationVerifyView,
