@@ -14,6 +14,7 @@ def get_auth_cookie_kwargs(is_refresh=False):
         "max_age": int(lifetime.total_seconds()),
         "httponly": settings.SIMPLE_JWT.get("AUTH_COOKIE_HTTP_ONLY", True),
         "secure": settings.SIMPLE_JWT.get("AUTH_COOKIE_SECURE", False),
+        "domain": settings.SIMPLE_JWT.get("AUTH_COOKIE_DOMAIN"),
         "path": settings.SIMPLE_JWT.get("AUTH_COOKIE_PATH", "/"),
         "samesite": settings.SIMPLE_JWT.get("AUTH_COOKIE_SAMESITE", "Lax"),
     }

@@ -3,6 +3,9 @@ import os
 from .base import *  # noqa: F403
 
 DEBUG = False
+SIMPLE_JWT = {**SIMPLE_JWT, "AUTH_COOKIE_SECURE": True}  # noqa: F405
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
 ALLOWED_HOSTS = [""]
 SECRET_KEY = os.getenv("SECRET_KEY")
 DATABASES = {  # AUTOCOMMIT
