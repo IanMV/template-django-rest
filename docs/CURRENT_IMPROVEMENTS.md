@@ -15,9 +15,9 @@
 | **B5** | Unnecessary exception in `get_client_ip` | **Fixed:** Checks for existence of non-empty `HTTP_X_FORWARDED_FOR` before splitting, avoiding `ValueError` exceptions on direct requests. |
 | **B6** | Dead serializers & response messages | **Fixed:** Purged unreferenced serializers (`CodeIsInvalidSerializer`, `NewEmailAlreadyExistsSerializer`, `UserNotFoundSerializer`, `NoRefreshTokenProvidedSerializer`, `SessionRevokedOrInactiveSerializer`) and unused messages (`MSG_EMAIL_ALREADY_EXIST`, `MSG_USER_NOT_FOUND`). |
 | **1.1** | Malformed JWT `session_id` | **Fixed:** Rejects non-positive/non-integer claims in `session_is_active` before ORM query; returns 401 instead of 500. |
-| **1.2** | Active account registration verify | **Fixed:** Filters `user__is_active=False` in `RegistrationService.verify_code`. |
-| **1.3** | Test cache & outbox isolation | **Fixed:** Clears default cache, session cache, and mail outbox in `BehaviorHelpers.setUp()`. |
-| **1.4** | Infrastructure exception logging | **Fixed:** Added `logger.exception()` in `RegistrationService` and `EmailChangeService`. |
+| **1.2** | Registration eligibility | **Fixed:** Request/verify/confirm accept only inactive users with an empty password and no staff/superuser privileges. Established disabled accounts cannot register again. |
+| **1.3** | Test cache & outbox isolation | **Fixed:** Reset locmem caches/outbox per test. Integration Redis resets only default-cache limiter keys and the separate session namespace within run-specific prefixes. |
+| **1.4** | Issuance failure logging | **Fixed:** Log fixed operation messages and exception class names; never log raw issuance exceptions. Preserve required audit-service exception logging. |
 | **2.1** | Refresh JWT re-parsing | **Fixed:** Reads rotated access/refresh JTIs directly from in-memory token instances. |
 | **2.2** | Authenticated token reuse | **Fixed:** Passes validated `request.auth` to session services; avoids re-parsing access cookies in protected views. |
 | **2.3** | Revocation & login N+1 queries | **Fixed:** Uses `bulk_create(..., ignore_conflicts=True)` and batch updates for token blacklisting and session replacement. |
@@ -31,37 +31,38 @@
 | **P2** | Superuser password enforcement | **Fixed:** `core/models/user.py:UserManager.create_superuser` rejects `password=None` or empty strings before `_create_user`, preventing creation of passwordless superusers. |
 | **P3.1** | Stale dev database comments | **Fixed:** Purged 34 commented-out database options from `app/settings/dev.py`. |
 | **P3.2** | Explicit `.env` loading boundaries | **Fixed:** Isolated `load_dotenv()` strictly to `app/settings/dev.py`. Removed from `base.py`. Production relies exclusively on injected environment variables. |
-| **P1.3** | PostgreSQL driver in production runtime | **Fixed:** Added `psycopg[binary]>=3.2.0` to `pyproject.toml` dependencies and locked in `pdm.lock`. Production runs PostgreSQL backend; development/tests stay on SQLite. |
+| **P1.3** | PostgreSQL driver in production runtime | **Fixed:** Runtime/lock include `psycopg[binary]`. Production and integration tests use PostgreSQL; development/default tests use SQLite. |
 | **P1.4** | Custom User Admin creation & change forms | **Fixed:** Implemented `CustomUserCreationForm` and `CustomUserChangeForm` in `core/admin.py` supporting `email` login and password hashing without `username` collisions. |
 | **P1.5** | Admin session and user deactivation consistency | **Fixed:** Made `UserSessionAdmin` read-only in admin and routed deletes to `SessionService.deactivate_session`. Configured `UserAdmin.save_model` to invoke `SessionService.revoke_all_sessions(obj)` upon account deactivation (`is_active=False`). |
 | **P2.1** | Clear auth cookies after password reset | **Fixed:** `PasswordResetConfirmView.post` applies `clear_auth_cookies(response)` to the HTTP 200 response upon successful password reset. |
 | **P2.2** | Serialized matching-device login replacement | **Fixed:** `AuthService.login_user` locks the `user` row via `select_for_update()` under `transaction.atomic()` to serialize concurrent first logins from identical user/device/IP pairs. |
-| **P2.3** | Atomic single-session revocation | **Fixed:** Wrapped `SessionService.deactivate_session` and `deactivate_session_by_access_jti` mutations in `transaction.atomic()`, ensuring token blacklisting and session deactivation commit atomically. |
+| **P2.3** | Atomic single-session revocation | **Fixed:** `deactivate_session` owns locking, blacklisting, deactivation, and on-commit cache invalidation. Logout uses stable session IDs; remove the duplicated access-JTI implementation. |
 | **P3.3** | Purged unused `UserSession.location` | **Fixed:** Removed unused `location` field from `UserSession` in `core/models/user.py` and generated schema migration `0002_remove_usersession_location.py`. |
 
 ---
 
-## 2. Open Items
+## 2. Security-Fix Execution
 
-### P1. Preserve refresh-token reuse detection during concurrent refreshes
+| Area | Implemented contract | Targeted validation |
+| :--- | :--- | :--- |
+| Authorization state | Lock users before code/session mutations; reject stale password/email/active snapshots; mint login tokens only after revalidation. | PostgreSQL state-change schedules, failed-attempt persistence, audit failure persistence. |
+| Refresh reuse | Recheck blacklisted refresh reuse after concurrent rotation; revoke its active session. | Two concurrent refreshes; one success, one 401, final session inactive. |
+| Purge | Lock candidate rows and recheck eligibility before deletion; retain self-deactivated users. | Reissue/confirmation after candidate selection; deletion failure rollback. |
+| Recovery identity | Email change atomically removes old reset codes; reset issuance rechecks the locked address. | Old code rejection, new code acceptance, concurrent issuance/change, rollback. |
+| Logout | Bind legacy tokens to their DB session ID in memory; revoke by stable ID through the shared service. | Modern/legacy tokens, both refresh/logout orders, missing/repeated session revocation, rollback/cache behavior. |
+| Email identity | Normalize the whole address to lowercase; retain unique email and enforce `core_user_email_canonical`. Migration `0005` checks collisions before normalizing users and pending email-change addresses. Never merge accounts automatically. | All account flows, manager/admin writes, database bypass rejection, concurrent uniqueness, migration success/collision rollback. |
+| Password input | Preserve leading/trailing spaces in all password fields; reject empty/whitespace-only values with native validation. | Admin login, registration/reset, email-change/self-deactivation reauthentication, existing weak/blank rules. |
+| Production configuration | Reject malformed/negative proxy counts; set SMTP socket timeout to 10 seconds. | Synthetic settings only; actual mailer timeout wiring and bounded sanitized timeout retries. |
+| Revoke-all | Fetch IDs of unexpired, not-yet-blacklisted tokens only; keep deactivation/cache invalidation atomic. | Expiry boundary, mixed token states, repeated revocation, insertion rollback, concurrent refresh, cache deletion. |
+| Issuance logs | Log operation and exception class only; preserve response statuses and cleanup attempts. | Synthetic database/queue/cleanup exceptions containing email/password/code/token markers. |
 
-- In `SessionService.refresh_tokens`, a request parses its refresh token before taking the session lock. If two requests start together, the first can rotate the token; the second then finds no row with the old JTI and returns at the `not session` branch without calling `revoke_reused_refresh`.
-- After serialization, detect whether the old token is now blacklisted and the same active session has a different refresh JTI; revoke that session as required by the reuse contract. Keep invalid-token responses indistinguishable.
+- Run only explicitly authorized targeted tests; no final full-suite execution performed. Migration validation uses a disposable test database, not the supplied application database.
+- CI provisions native PostgreSQL/Redis without Docker. `tests/settings_integration.py` uses local test credentials and isolated Redis prefixes; never run integration settings against production services.
+- Production deployment, real SMTP delivery, and independent multi-process behavior remain unverified. Threaded Redis tests validate the shared backend, not a full worker topology.
+- Apply migration `0005` only after reviewing possible identity collisions. On collision, resolve ownership manually and rerun; no automatic account deletion/merge.
+- A database failure during queue-failure cleanup can leave a code until expiry; sanitized cleanup failure logs remain observable. Do not claim guaranteed cleanup while database writes are unavailable.
 
-### P1. Define and enforce one email identity policy
-
-- Registration and email change store serializer input directly, while password reset and authentication perform exact email lookups. `EmailField` validation does not make the database identity case-insensitive; e.g. `Person@example.com` and `Person@EXAMPLE.COM` can create separate rows although delivery targets the same domain mailbox.
-- Choose a canonicalization policy, apply it consistently to registration, login, reset, and email change, and enforce it in the database. Before migration, find and resolve existing collisions without merging accounts automatically.
-
-### P2. Bound token-blacklist and stale-session storage
-
-- `SessionService.revoke_all_sessions` iterates every `OutstandingToken` for a user, including expired tokens; no tracked code or workflow runs Simple JWT's expired-token cleanup. Token rows and blacklist work therefore grow with account lifetime and make later revocations slower.
-- Add a scheduled/operational `flushexpiredtokens` cleanup and avoid blacklisting expired tokens. Also define cleanup for inactive-or-expired `UserSession` rows; expired refresh tokens currently leave rows marked active and visible in the session list indefinitely.
-
-### P2. Validate production Redis and proxy settings
-
-- `app/settings/prod.py` parses the Redis DB path but accepts unsupported or hostless `REDIS_URL` values; these can let startup succeed while cache operations fail at request time. Negative `NUM_PROXIES` values also silently disable forwarded-client-IP handling.
-- Validate `REDIS_URL` scheme (`redis`/`rediss`) and hostname, and require `NUM_PROXIES >= 0` at startup. Do not add a Redis connectivity probe unless deployment requires fail-fast network checks.
+## 3. Open Items Outside This Fix Plan
 
 ### P3. Remove or correct stale response-message comments
 
@@ -78,4 +79,4 @@
 - Feature 1 was already implemented before this change; keep standard absolute lifetime at 30 days until a reduction to 7 days receives explicit approval.
 - Feature 5a/5b adds `AuditLog`, best-effort event recording, staff-only paginated `GET /api/audit/`, and no new Django admin. Database append-only permissions and any legal retention period remain undecided; do not claim tamper evidence or regulatory compliance.
 - Feature 4b adds a single-Beat 03:00 cleanup task with bounded application-level batches. The stock Simple JWT `flushexpiredtokens` command itself is not batched. Audit retention defaults to disabled (`AUDIT_RETENTION_DAYS=None`) until a positive period is approved.
-- Comprehensive behavioral tests implemented and passing across Feature 1, Feature 4b, and Feature 5a/5b (`tests/test_audit.py`, `tests/test_maintenance_purge.py`, `tests/test_remember_me.py`, `tests/test_async_email.py`). Covers authorization, rollback/failure persistence, sanitization, maintenance survival of self-deactivated accounts, and Celery beat scheduling.
+- Behavioral tests exist for Feature 1, Feature 4b, and Feature 5a/5b. Current execution validated selected cases only; do not infer a current full-suite pass or production readiness.
