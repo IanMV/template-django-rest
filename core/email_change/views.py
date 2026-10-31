@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.auth.cookies import clear_auth_cookies
+from core.auth.rate_limit import limit_code_verification_attempts
 from core.email_change.serializers import (
     EmailChangeConfirmSerializer,
     EmailChangeRequestSerializer,
@@ -94,12 +95,15 @@ class EmailChangeVerifyView(APIView):
             400: ValidationErrorResponse,
             401: NotAuthenticatedSerializer,
             403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
         serializer = EmailChangeVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        limit_code_verification_attempts(get_client_ip(request))
         EmailChangeService.verify_code(
             user=request.user, code=serializer.validated_data["code"]
         )
@@ -128,12 +132,15 @@ class EmailChangeConfirmView(APIView):
             400: ValidationErrorResponse,
             401: NotAuthenticatedSerializer,
             403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
         serializer = EmailChangeConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        limit_code_verification_attempts(get_client_ip(request))
         EmailChangeService.confirm_change(
             user=request.user,
             code=serializer.validated_data["code"],

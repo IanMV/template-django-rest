@@ -1,7 +1,31 @@
+from unittest.mock import patch
+
 from tests.base import ApiCase
 
 
 class CodeRequestRateLimitTests(ApiCase):
+    def test_issuance_email_cache_failure_returns_503(self):
+        with patch("core.auth.rate_limit.cache.add", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    "/api/password-reset/request/",
+                    {"email": "missing@example.com"},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 503)
+
+    def test_issuance_ip_cache_failure_fails_open(self):
+        with patch(
+            "core.auth.rate_limit.cache.add", side_effect=[True, RuntimeError("down")]
+        ):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    "/api/password-reset/request/",
+                    {"email": "missing@example.com"},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 200)
+
     def test_same_scope_and_email_is_throttled_even_from_another_ip(self):
         email = "missing@example.com"
         first = self.client.post(
@@ -117,3 +141,41 @@ class LoginRateLimitTests(ApiCase):
         self.assertEqual(
             self.attempt("person30@example.com", "127.0.0.1").status_code, 429
         )
+
+    def test_login_cache_failure_fails_open(self):
+        with patch("core.auth.rate_limit.cache.add", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.attempt("missing@example.com", "127.0.0.1")
+        self.assertEqual(response.status_code, 401)
+
+
+class CodeVerificationRateLimitTests(ApiCase):
+    def test_sixteenth_attempt_and_confirmation_share_ip_throttle(self):
+        for _ in range(15):
+            response = self.client.post(
+                "/api/registration/verify/",
+                {"email": "missing@example.com", "code": "000000"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400)
+        response = self.client.post(
+            "/api/registration/confirm/",
+            {
+                "email": "missing@example.com",
+                "code": "000000",
+                "name": "Example Person",
+                "password": self.password,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 429)
+
+    def test_verification_cache_failure_fails_closed(self):
+        with patch("core.auth.rate_limit.cache.add", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    "/api/registration/verify/",
+                    {"email": "missing@example.com", "code": "000000"},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 503)

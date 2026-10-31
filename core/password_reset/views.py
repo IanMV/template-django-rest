@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.auth.rate_limit import limit_code_verification_attempts
 from core.password_reset.serializers import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
@@ -86,12 +87,15 @@ class PasswordResetVerifyView(APIView):
         responses={
             200: CodeIsValidSerializer,
             400: ValidationErrorResponse,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
         serializer = PasswordResetVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        limit_code_verification_attempts(get_client_ip(request))
         PasswordResetService.verify_code(
             email=serializer.validated_data["email"],
             code=serializer.validated_data["code"],
@@ -124,12 +128,15 @@ class PasswordResetConfirmView(APIView):
         responses={
             200: PasswordResetSerializer,
             400: ValidationErrorResponse,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        limit_code_verification_attempts(get_client_ip(request))
         PasswordResetService.confirm_reset(
             email=serializer.validated_data["email"],
             code=serializer.validated_data["code"],

@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.auth.rate_limit import limit_code_verification_attempts
 from core.registration.serializers import (
     RegistrationConfirmSerializer,
     RegistrationRequestSerializer,
@@ -89,12 +90,15 @@ class RegistrationVerifyView(APIView):
         responses={
             200: CodeIsValidSerializer,
             400: ValidationErrorResponse,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
         serializer = RegistrationVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        limit_code_verification_attempts(get_client_ip(request))
         RegistrationService.verify_code(
             email=serializer.validated_data["email"],
             code=serializer.validated_data["code"],
@@ -127,12 +131,15 @@ class RegistrationConfirmView(APIView):
         responses={
             200: UserCreatedSerializer,
             400: ValidationErrorResponse,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
         serializer = RegistrationConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        limit_code_verification_attempts(get_client_ip(request))
         RegistrationService.confirm_registration(
             email=serializer.validated_data["email"],
             code=serializer.validated_data["code"],
