@@ -4,7 +4,7 @@ from rest_framework import exceptions
 from rest_framework.authentication import CSRFCheck
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from core.models.user import UserSession
+from core.auth.session_cache import session_is_active
 
 
 def dummy_get_response(request):
@@ -58,11 +58,7 @@ class CustomAuthentication(JWTAuthentication):
         # =======================================================
 
         validated_token = self.get_validated_token(raw_token)
-        jti = str(validated_token.get("jti", ""))
-        session_is_active = UserSession.objects.filter(
-            access_jti=jti, is_active=True
-        ).exists()
-        if not session_is_active:
+        if not session_is_active(validated_token):
             raise exceptions.AuthenticationFailed()
         if is_cookie_auth and request.method not in (
             "GET",

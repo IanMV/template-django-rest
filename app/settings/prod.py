@@ -1,4 +1,5 @@
 import os
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -21,12 +22,26 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 redis_url = os.getenv("REDIS_URL")
 if not redis_url:
     raise ImproperlyConfigured("REDIS_URL is required in production.")
+redis_parts = urlsplit(redis_url)
+if "db" in parse_qs(redis_parts.query, keep_blank_values=True):
+    raise ImproperlyConfigured("Specify the Redis DB index in REDIS_URL's path.")
+try:
+    redis_db = int(redis_parts.path.lstrip("/") or "0")
+    if redis_db < 0:
+        raise ValueError
+except ValueError as exc:
+    raise ImproperlyConfigured("REDIS_URL must have a nonnegative DB index.") from exc
 
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": redis_url,
-    }
+    },
+    "sessions": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": urlunsplit(redis_parts._replace(path=f"/{redis_db + 1}")),
+        "KEY_PREFIX": "sessions",
+    },
 }
 
 MAILERS = {

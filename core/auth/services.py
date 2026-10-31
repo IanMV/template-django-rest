@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from user_agents import parse
 
 from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
+from core.auth.session_cache import invalidate_sessions
 from core.models.user import UserSession
 from core.shared.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
@@ -28,7 +29,8 @@ class SessionService:
         if not refresh_token_str:
             raise AuthenticationFailed(MSG_NO_REFRESH_TOKEN_PROVIDED)
         try:
-            old_jti = str(RefreshToken(refresh_token_str).get("jti", ""))
+            old_token = RefreshToken(refresh_token_str)
+            old_jti = str(old_token.get("jti", ""))
         except TokenError as exc:
             raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN) from exc
 
@@ -40,6 +42,11 @@ class SessionService:
             )
             if not session:
                 raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
+            if (
+                old_token.get("session_id") not in (None, session.pk)
+                or str(old_token.get("user_id", "")) != str(session.user_id)
+            ):
+                raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
             serializer = serializer_factory(data={"refresh": refresh_token_str})
             try:
                 serializer.is_valid(raise_exception=True)
@@ -47,16 +54,19 @@ class SessionService:
                 raise InvalidToken(exc.args[0]) from exc
 
             response_data = serializer.validated_data
-            access = response_data.get("access")
-            refresh = response_data.get("refresh")
-            if not access or not refresh:
+            if not response_data.get("access") or not response_data.get("refresh"):
                 raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
+            new_refresh = RefreshToken(response_data["refresh"])
+            new_refresh["session_id"] = session.pk
+            access = str(new_refresh.access_token)
+            refresh = str(new_refresh)
             if not SessionService.update_session_jtis(
                 old_refresh_jti=old_jti,
                 new_access_jti=str(AccessToken(access).get("jti", "")),
                 new_refresh_jti=str(RefreshToken(refresh).get("jti", "")),
             ):
                 raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
+            invalidate_sessions([session.pk])
         return {"access": access, "refresh": refresh}
 
     @staticmethod
@@ -119,6 +129,7 @@ class SessionService:
 
         session.is_active = False
         session.save(update_fields=["is_active"])
+        invalidate_sessions([session.pk])
 
     @staticmethod
     def deactivate_session_by_access_jti(user, access_jti):
@@ -136,13 +147,18 @@ class SessionService:
 
             session.is_active = False
             session.save(update_fields=["is_active"])
+            invalidate_sessions([session.pk])
 
     @staticmethod
     def revoke_all_sessions(user):
-        tokens = OutstandingToken.objects.filter(user=user)
-        for token in tokens:
-            BlacklistedToken.objects.get_or_create(token=token)
-        UserSession.objects.filter(user=user, is_active=True).update(is_active=False)
+        with transaction.atomic():
+            tokens = OutstandingToken.objects.filter(user=user)
+            for token in tokens:
+                BlacklistedToken.objects.get_or_create(token=token)
+            sessions = UserSession.objects.filter(user=user, is_active=True)
+            session_ids = list(sessions.values_list("pk", flat=True))
+            sessions.update(is_active=False)
+            invalidate_sessions(session_ids)
 
     @classmethod
     def update_session_jtis(
@@ -179,11 +195,9 @@ class AuthService:
         if not user or not user.is_active:
             raise AuthenticationFailed()
         refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-        refresh_token = str(refresh)
+        access = refresh.access_token
         user_agent = parse(user_agent_string)
-        jti_access = str(AccessToken(access_token).get("jti"))
-        jti_refresh = str(RefreshToken(refresh_token).get("jti"))
+        jti_refresh = str(refresh.get("jti"))
 
         with transaction.atomic():
             sessions = UserSession.objects.select_for_update().filter(
@@ -194,13 +208,15 @@ class AuthService:
             )
             for session in sessions:
                 SessionService.deactivate_session(user, session.pk)
-            UserSession.objects.create(
+            session = UserSession.objects.create(
                 user=user,
                 device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
                 ip_address=ip_address,
-                access_jti=jti_access,
+                access_jti=str(access["jti"]),
                 refresh_jti=jti_refresh,
             )
+            refresh["session_id"] = session.pk
+            access["session_id"] = session.pk
         if previous_session:
             SessionService.deactivate_session(
                 previous_session.user, previous_session.pk
@@ -209,6 +225,6 @@ class AuthService:
         reset_login_attempts(email, ip_address)
 
         return {
-            "refresh": refresh_token,
-            "access": access_token,
+            "refresh": str(refresh),
+            "access": str(access),
         }

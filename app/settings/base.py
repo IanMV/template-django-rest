@@ -9,6 +9,15 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 NUM_PROXIES = 0
+SESSION_CACHE_TTL = 60
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "sessions": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "sessions",
+        "KEY_PREFIX": "sessions",
+    },
+}
 APPEND_SLASH = True
 CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
 CSRF_TRUSTED_ORIGINS = [
