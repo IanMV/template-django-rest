@@ -1,0 +1,13 @@
+.git/
+.github/
+.venv/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+.env
+db.sqlite3
+docs/
+tests/
+media/
+static/
+AGENTS.md
