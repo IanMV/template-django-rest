@@ -3,6 +3,7 @@ from django.db import connections
 from django.test import override_settings
 from django.urls import URLPattern, URLResolver, get_resolver, resolve
 
+from core.models import UserSession
 from tests.base import ApiCase
 
 
@@ -235,4 +236,33 @@ class ContractTests(ApiCase):
             self.assertEqual(
                 prod.DATABASES["default"]["OPTIONS"], {"sslmode": "require"}
             )
+
+    def test_single_session_deactivation_is_atomic_and_blacklists_refresh(self):
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+
+        from core.auth.services import SessionService
+
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user, is_active=True)
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 0)
+
+        SessionService.deactivate_session(user, session.pk)
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 1)
+
+    def test_login_session_replacement_serializes_and_replaces_matching_device(self):
+        user = self.create_user()
+        _, _ = self.login(user, ip="192.168.1.1", agent="BrowserA")
+        sessions1 = list(UserSession.objects.filter(user=user, is_active=True))
+        self.assertEqual(len(sessions1), 1)
+
+        client2 = self.new_client()
+        self.login(user, client=client2, ip="192.168.1.1", agent="BrowserA")
+        active_sessions = list(UserSession.objects.filter(user=user, is_active=True))
+        self.assertEqual(len(active_sessions), 1)
+        self.assertNotEqual(active_sessions[0].pk, sessions1[0].pk)
+        self.assertFalse(UserSession.objects.get(pk=sessions1[0].pk).is_active)
+
 

@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.auth.cookies import clear_auth_cookies
 from core.auth.rate_limit import limit_code_verification_attempts
 from core.password_reset.serializers import (
     PasswordResetConfirmSerializer,
@@ -145,4 +146,6 @@ class PasswordResetConfirmView(APIView):
             new_password=serializer.validated_data["new_password"],
         )
 
-        return Response({"detail": MSG_PASSWORD_RESET}, status.HTTP_200_OK)
+        response = Response({"detail": MSG_PASSWORD_RESET}, status.HTTP_200_OK)
+        clear_auth_cookies(response)
+        return response

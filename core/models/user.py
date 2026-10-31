@@ -118,10 +118,6 @@ class UserSession(models.Model):
     refresh_jti = models.CharField(max_length=255, unique=True)
     device_name = models.CharField(max_length=255)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
-    location = models.CharField(
-        max_length=255,
-        blank=True,
-    )
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)

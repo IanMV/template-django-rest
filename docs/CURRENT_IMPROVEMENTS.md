@@ -31,44 +31,17 @@
 | **P2** | Superuser password enforcement | **Fixed:** `core/models/user.py:UserManager.create_superuser` rejects `password=None` or empty strings before `_create_user`, preventing creation of passwordless superusers. |
 | **P3.1** | Stale dev database comments | **Fixed:** Purged 34 commented-out database options from `app/settings/dev.py`. |
 | **P3.2** | Explicit `.env` loading boundaries | **Fixed:** Isolated `load_dotenv()` strictly to `app/settings/dev.py`. Removed from `base.py`. Production relies exclusively on injected environment variables. |
+| **P1.3** | PostgreSQL driver in production runtime | **Fixed:** Added `psycopg[binary]>=3.2.0` to `pyproject.toml` dependencies and locked in `pdm.lock`. Production runs PostgreSQL backend; development/tests stay on SQLite. |
+| **P1.4** | Custom User Admin creation & change forms | **Fixed:** Implemented `CustomUserCreationForm` and `CustomUserChangeForm` in `core/admin.py` supporting `email` login and password hashing without `username` collisions. |
+| **P1.5** | Admin session and user deactivation consistency | **Fixed:** Made `UserSessionAdmin` read-only in admin and routed deletes to `SessionService.deactivate_session`. Configured `UserAdmin.save_model` to invoke `SessionService.revoke_all_sessions(obj)` upon account deactivation (`is_active=False`). |
+| **P2.1** | Clear auth cookies after password reset | **Fixed:** `PasswordResetConfirmView.post` applies `clear_auth_cookies(response)` to the HTTP 200 response upon successful password reset. |
+| **P2.2** | Serialized matching-device login replacement | **Fixed:** `AuthService.login_user` locks the `user` row via `select_for_update()` under `transaction.atomic()` to serialize concurrent first logins from identical user/device/IP pairs. |
+| **P2.3** | Atomic single-session revocation | **Fixed:** Wrapped `SessionService.deactivate_session` and `deactivate_session_by_access_jti` mutations in `transaction.atomic()`, ensuring token blacklisting and session deactivation commit atomically. |
+| **P3.3** | Purged unused `UserSession.location` | **Fixed:** Removed unused `location` field from `UserSession` in `core/models/user.py` and generated schema migration `0002_remove_usersession_location.py`. |
 
 ---
 
 ## 2. Open Items
 
-### P1. Add the PostgreSQL driver to production dependencies
+*No open backlog items.*
 
-- `app/settings/prod.py` configures `django.db.backends.postgresql`, but `pyproject.toml` and `pdm.lock` do not include `psycopg` or `psycopg2`.
-- Add the supported PostgreSQL driver as a runtime dependency and lock it. A production deployment must be able to load the configured backend without relying on an undeclared, manually installed package.
-- Keep SQLite for development and tests.
-
-### P1. Make Django admin work with the custom user model
-
-- `core/admin.py:16-101` subclasses Django's stock `UserAdmin` without custom add/change forms. The stock add form targets the built-in `username` field, which `core.models.user.User` does not have.
-- Supply forms compatible with the email-based `User` model, preserving safe password hashing and the existing admin fields. Ensure staff can open and submit the add-user form.
-
-### P1. Prevent admin edits from bypassing session revocation and cache invalidation
-
-- `core/admin.py:217-219` registers `UserSessionAdmin` with the unrestricted default `ModelAdmin`; a staff user can edit or delete session rows without blacklisting refresh tokens or invalidating the positive session cache.
-- Make session records read-only in admin, or route every mutation through `SessionService` so database state, refresh-token blacklist, and cache invalidation stay consistent.
-- Also ensure admin deactivation of a `User` revokes that user's sessions. Do not leave active sessions that can become valid again if the account is reactivated.
-
-### P2. Clear authentication cookies after a successful password reset
-
-- `core/password_reset/views.py:137-148` revokes sessions but returns without expiring the browser's access and refresh cookies.
-- Apply the existing `clear_auth_cookies` helper to the success response. Preserve the public reset response body/status and cookie path semantics.
-
-### P2. Serialize matching-device login session replacement
-
-- `core/auth/services.py:227-255` locks matching active session rows, then creates a replacement. If no matching row exists, two concurrent first logins have no row to lock and can both create active sessions for the same user/device/IP.
-- Serialize this operation using a stable row lock (for example, the user row) or an equivalent database-enforced design. Preserve the current replacement behavior; review the database locking semantics and do not infer concurrency safety from SQLite.
-
-### P2. Make single-session revocation atomic
-
-- `SessionService.deactivate_session` and `deactivate_session_by_access_jti` may blacklist a refresh token and deactivate its session in separate autocommit transactions when called by logout or session deletion.
-- Wrap each full revocation mutation in `transaction.atomic()` so a database failure cannot leave refresh-token and session state partially updated. Keep cache deletion on commit and preserve existing response behavior.
-
-### P3. Remove or justify unused session location data
-
-- `UserSession.location` in `core/models/user.py` has no application service or API reader/writer; the generic admin form's ability to edit it does not provide application behavior.
-- Confirm there is no external consumer; if unused, remove it with a migration. If it is intentionally reserved for a documented feature, document that contract instead of silently retaining dead schema.

@@ -198,6 +198,24 @@ class PasswordResetTests(ApiCase):
         self.assertEqual((response.status_code, response.data), (unknown.status_code, unknown.data))
         self.assertFalse(PasswordReset.objects.filter(user=user).exists())
 
+    def test_password_reset_confirm_clears_auth_cookies(self):
+        user = self.create_user()
+        self.login(user)
+        code = self.request_code(user.email)
+        response = self.client.post(
+            self.base_url + "confirm/",
+            {
+                "email": user.email,
+                "code": code,
+                "new_password": "NewStrongPass!4693$",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.cookies["access_token"]["max-age"], 0)
+        self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
+
+
 
 class PasswordResetAttemptPersistenceTests(ApiTransactionCase):
     def test_failed_confirmation_persists_attempt_after_400(self):

@@ -142,3 +142,56 @@ class UserTests(ApiCase):
             )
         self.assertFalse(User.objects.filter(email="admin_empty_pass@example.com").exists())
 
+    def test_custom_user_admin_creation_form(self):
+        from core.admin import CustomUserCreationForm
+
+        form = CustomUserCreationForm(
+            {
+                "email": "admin_staff_added@example.com",
+                "name": "Staff Added",
+                "password1": "StaffPass!7483",
+                "password2": "StaffPass!7483",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save()
+        self.assertTrue(user.check_password("StaffPass!7483"))
+        self.assertEqual(user.email, "admin_staff_added@example.com")
+
+    def test_admin_user_deactivation_revokes_sessions(self):
+        from django.contrib.admin.sites import AdminSite
+
+        from core.admin import UserAdmin
+
+        user = self.create_user()
+        self.login(user)
+        self.assertTrue(UserSession.objects.filter(user=user, is_active=True).exists())
+
+        admin_instance = UserAdmin(User, AdminSite())
+        user.is_active = False
+        admin_instance.save_model(None, user, None, change=True)
+
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
+        self.assertFalse(UserSession.objects.filter(user=user, is_active=True).exists())
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 1)
+
+    def test_admin_session_is_read_only_and_deletion_revokes_tokens(self):
+        from django.contrib.admin.sites import AdminSite
+
+        from core.admin import UserSessionAdmin
+
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user, is_active=True)
+
+        session_admin = UserSessionAdmin(UserSession, AdminSite())
+        self.assertFalse(session_admin.has_add_permission(None))
+        self.assertFalse(session_admin.has_change_permission(None))
+
+        session_admin.delete_model(None, session)
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 1)
+
+

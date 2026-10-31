@@ -14,7 +14,7 @@ from user_agents import parse
 
 from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
 from core.auth.session_cache import invalidate_sessions
-from core.models.user import UserSession
+from core.models import User, UserSession
 from core.shared.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
     MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
@@ -140,37 +140,44 @@ class SessionService:
 
     @staticmethod
     def deactivate_session(user, session_id):
-        session = UserSession.objects.get(id=session_id, user=user)
-        try:
+        with transaction.atomic():
+            session = (
+                UserSession.objects.select_for_update()
+                .filter(id=session_id, user=user)
+                .first()
+            )
+            if not session:
+                raise UserSession.DoesNotExist(MSG_USER_SESSION_NOT_FOUND)
             if session.refresh_jti:
-                outstanding_token = OutstandingToken.objects.get(
+                outstanding_token = OutstandingToken.objects.filter(
                     jti=session.refresh_jti
-                )
-                BlacklistedToken.objects.get_or_create(token=outstanding_token)
-        except OutstandingToken.DoesNotExist:
-            pass
-
-        session.is_active = False
-        session.save(update_fields=["is_active"])
-        invalidate_sessions([session.pk])
-
-    @staticmethod
-    def deactivate_session_by_access_jti(user, access_jti):
-        session = UserSession.objects.filter(access_jti=access_jti, user=user).first()
-
-        if session:
-            try:
-                if session.refresh_jti:
-                    outstanding_token = OutstandingToken.objects.get(
-                        jti=session.refresh_jti
-                    )
+                ).first()
+                if outstanding_token:
                     BlacklistedToken.objects.get_or_create(token=outstanding_token)
-            except OutstandingToken.DoesNotExist:
-                pass
 
             session.is_active = False
             session.save(update_fields=["is_active"])
             invalidate_sessions([session.pk])
+
+    @staticmethod
+    def deactivate_session_by_access_jti(user, access_jti):
+        with transaction.atomic():
+            session = (
+                UserSession.objects.select_for_update()
+                .filter(access_jti=access_jti, user=user)
+                .first()
+            )
+            if session:
+                if session.refresh_jti:
+                    outstanding_token = OutstandingToken.objects.filter(
+                        jti=session.refresh_jti
+                    ).first()
+                    if outstanding_token:
+                        BlacklistedToken.objects.get_or_create(token=outstanding_token)
+
+                session.is_active = False
+                session.save(update_fields=["is_active"])
+                invalidate_sessions([session.pk])
 
     @staticmethod
     def revoke_all_sessions(user):
@@ -225,6 +232,7 @@ class AuthService:
         jti_refresh = str(refresh.get("jti"))
 
         with transaction.atomic():
+            User.objects.select_for_update().get(pk=user.pk)
             candidate_ids = set(
                 UserSession.objects.select_for_update()
                 .filter(
