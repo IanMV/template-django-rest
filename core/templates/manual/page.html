@@ -1,0 +1,57 @@
+{% load static %}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>{{ title }} — Teste da API</title>
+  <link rel="stylesheet" href="{% static 'manual/manual.css' %}">
+  <script src="{% static 'manual/manual.js' %}" defer></script>
+</head>
+<body data-csrf-cookie="{{ csrf_cookie_name }}" data-csrf-header="{{ csrf_header_name }}">
+  <header>
+    <h1>Teste manual da API</h1>
+    <nav aria-label="Páginas de teste">
+      {% for key, label in pages %}<a href="{% url 'manual-page' key %}">{{ label }}</a>{% endfor %}
+      <a href="{% url 'swagger-ui' %}">Swagger</a>
+      <a href="{% url 'admin:index' %}">Painel administrativo</a>
+    </nav>
+    <p>Disponível somente com DEBUG ativo. Use contas de teste: as ações alteram dados reais.</p>
+    <p>Comece pelo cadastro ou pela entrada. Os cookies são enviados pelo navegador; a proteção CSRF é obtida automaticamente quando necessário. Os códigos devem ser copiados do e-mail ou, no desenvolvimento padrão, do terminal do servidor.</p>
+    <p>Depois de trocar e-mail, redefinir senha, desativar a conta ou encerrar todas as sessões, será necessário entrar novamente. Acesso de equipe exige uma conta com essa permissão; a entrada no painel administrativo é separada.</p>
+    <p>Os limites da API continuam valendo. Aguarde o prazo indicado em respostas 429; não renove a mesma sessão simultaneamente em várias abas.</p>
+    <noscript>Ative o JavaScript para enviar os formulários. Nenhuma operação será enviada sem ele.</noscript>
+  </header>
+  <main>
+    <h2>{{ title }}</h2>
+    <div class="forms">
+      {% for form in forms %}
+      <form action="{{ form.action }}" method="{% if form.method == 'GET' %}get{% else %}post{% endif %}" data-method="{{ form.method }}" data-confirm="{{ form.confirmation }}" autocomplete="off">
+        <fieldset disabled>
+          <legend>{{ form.label }}</legend>
+          <p><code>{{ form.method }} {{ form.action }}</code></p>
+          {% for name, label, input_type in form.fields %}
+          <label for="{{ form.name }}-{{ form.method }}-{{ name }}">{{ label }}</label>
+          <input id="{{ form.name }}-{{ form.method }}-{{ name }}" name="{{ name }}" type="{{ input_type }}"
+            {% if input_type != 'checkbox' and name != 'page' and name != 'page_size' %}required{% endif %}
+            {% if input_type == 'number' %}min="1" step="1"{% endif %}
+            {% if name == 'page_size' %}max="100"{% endif %}
+            {% if name == 'code' %}inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6"{% endif %}
+            {% if input_type == 'password' %}autocomplete="off"{% endif %}>
+          {% endfor %}
+          <button type="submit">{{ form.label }}</button>
+        </fieldset>
+      </form>
+      {% endfor %}
+    </div>
+    <section aria-labelledby="result-title">
+      <h2 id="result-title">Última resposta</h2>
+      <p id="request-status" role="status" aria-live="polite">Nenhuma requisição enviada.</p>
+      <pre id="response-body" tabindex="0" aria-label="Conteúdo da resposta"></pre>
+      <button id="clear-result" type="button">Limpar resultado</button>
+      <p>Senhas são apagadas dos campos após o envio. Esta página não grava dados no armazenamento do navegador nem exibe tokens HttpOnly.</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from core.auth import urls as auth_urls
+from core.shared.manual import manual_page
 from core.users import urls as users_urls
 
 urlpatterns = [
@@ -16,4 +17,6 @@ urlpatterns = [
     path("api/", include(auth_urls.refresh_urlpatterns)),
     path("api/", include(users_urls.profile_urlpatterns)),
     path("api/audit/", include("core.audit.urls")),
+    path("manual/", manual_page, name="manual-index"),
+    path("manual/<slug:page>/", manual_page, name="manual-page"),
 ]
