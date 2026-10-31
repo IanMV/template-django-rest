@@ -41,6 +41,19 @@ class RegistrationTests(ApiCase):
         )
         self.assertEqual((first.status_code, first.data), (second.status_code, second.data))
 
+    def test_active_account_cannot_verify_lingering_code(self):
+        code = self.request_code()
+        user = User.objects.get(email=self.email)
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+        response = self.client.post(
+            self.base_url + "verify/",
+            {"email": self.email, "code": code},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(str(response.data["code"]), "Invalid or expired verification code.")
+
     def test_verify_does_not_consume_and_confirm_creates_active_user(self):
         code = self.request_code()
         payload = {"email": self.email, "code": code}

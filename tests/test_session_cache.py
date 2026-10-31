@@ -10,9 +10,16 @@ from tests.base import ApiCase
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class SessionCacheTests(ApiCase):
-    def setUp(self):
-        super().setUp()
-        caches["sessions"].clear()
+    def test_malformed_session_claim_is_rejected(self):
+        user = self.create_user()
+        self.login(user)
+        original = AccessToken(self.client.cookies["access_token"].value)
+        for session_id in ("malformed", 1.5, True, 0, -1):
+            with self.subTest(session_id=session_id):
+                token = AccessToken(str(original))
+                token["session_id"] = session_id
+                self.client.cookies["access_token"] = str(token)
+                self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
 
     def test_miss_queries_session_and_populates_cache_then_hit_skips_it(self):
         user = self.create_user()

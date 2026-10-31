@@ -1,7 +1,7 @@
 import re
 
 from django.core import mail
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -14,6 +14,8 @@ class BehaviorHelpers:
     def setUp(self):
         super().setUp()
         cache.clear()
+        caches["sessions"].clear()
+        mail.outbox.clear()
         self.client = self.new_client()
 
     def new_client(self):

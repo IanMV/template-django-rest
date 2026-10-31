@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from django.db import transaction
@@ -13,6 +14,8 @@ from core.shared.response_messages import (
     MSG_CODE_INVALID,
     MSG_EMAIL_IN_USE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EmailChangeService:
@@ -43,6 +46,7 @@ class EmailChangeService:
 
                 transaction.on_commit(send)
         except Exception as exc:
+            logger.exception("Email change code issuance failed")
             raise ServiceUnavailable() from exc
 
     @staticmethod

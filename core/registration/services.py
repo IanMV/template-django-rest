@@ -60,6 +60,7 @@ class RegistrationService:
 
                 transaction.on_commit(send)
         except Exception as exc:
+            logger.exception("Registration code issuance failed")
             raise ServiceUnavailable() from exc
 
     @staticmethod
@@ -67,7 +68,7 @@ class RegistrationService:
         with transaction.atomic():
             verification = (
                 EmailVerification.objects.select_for_update()
-                .filter(user__email=email)
+                .filter(user__email=email, user__is_active=False)
                 .first()
             )
             valid = verification is not None and verification.verify(code)

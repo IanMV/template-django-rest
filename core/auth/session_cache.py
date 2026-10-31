@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 def session_is_active(token, *, use_cache=True):
     session_id = token.get("session_id")
+    if session_id is not None and (type(session_id) is not int or session_id <= 0):
+        return False
     jti = str(token.get("jti", ""))
     user_id = str(token.get("user_id", ""))
     if session_id is not None and use_cache:
