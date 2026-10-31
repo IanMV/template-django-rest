@@ -36,19 +36,13 @@ class RegistrationRequestView(APIView):
     @extend_schema(
         tags=["registration"],
         summary="Request a registration code",
-        description="Step 1 of 3: submit an email. A six-digit code is sent to that address; request again after the cooldown to replace an expired code.",
+        description="Step 1 of 3: submit an email. Existing active accounts receive a security notice instead of a code; the response is identical. Request again after the cooldown to replace an expired code.",
         request=RegistrationRequestSerializer,
         examples=[
             OpenApiExample(
                 "Registration email",
                 value={"email": "person@example.com"},
                 request_only=True,
-            ),
-            OpenApiExample(
-                "Email already active",
-                value={"email": "This account is already active."},
-                response_only=True,
-                status_codes=["400"],
             ),
             RateLimitedExample,
         ],

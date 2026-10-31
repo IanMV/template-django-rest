@@ -26,6 +26,21 @@ class RegistrationTests(ApiCase):
         self.assertNotEqual(record.code, code)
         self.assertEqual(mail.outbox[-1].to, [self.email])
 
+    def test_active_account_gets_same_response_and_security_notice(self):
+        active = self.create_user(email="active@example.com")
+        first = self.post_with_commit(
+            self.base_url + "request/", {"email": active.email}
+        )
+        self.assertEqual(first.status_code, 201)
+        self.assertFalse(EmailVerification.objects.filter(user=active).exists())
+        self.assertEqual(mail.outbox[-1].to, [active.email])
+        self.assertNotIn("Your code is:", mail.outbox[-1].body)
+        cache.clear()
+        second = self.post_with_commit(
+            self.base_url + "request/", {"email": self.email}
+        )
+        self.assertEqual((first.status_code, first.data), (second.status_code, second.data))
+
     def test_verify_does_not_consume_and_confirm_creates_active_user(self):
         code = self.request_code()
         payload = {"email": self.email, "code": code}

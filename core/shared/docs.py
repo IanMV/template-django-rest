@@ -10,8 +10,8 @@ from core.shared.response_messages import (
     MSG_CODE_INVALID,
     MSG_CODE_SENT,
     MSG_CODE_VALID,
-    MSG_EMAIL_ALREADY_EXIST,
     MSG_EMAIL_CHANGED,
+    MSG_EMAIL_IN_USE,
     MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
     MSG_LOGIN_SUCCESSFUL,
     MSG_LOGOUT_SUCCESSFUL,
@@ -63,16 +63,6 @@ UserCreatedSerializer = inline_serializer(
     },
 )
 
-EmailAlreadyExistsSerializer = inline_serializer(
-    "EmailAlreadyExistsSerializer",
-    fields={
-        "email": CharField(
-            default=MSG_EMAIL_ALREADY_EXIST,
-            required=False,
-        )
-    },
-)
-
 PasswordResetSerializer = inline_serializer(
     "PasswordResetConfirmSuccess",
     {
@@ -106,7 +96,7 @@ NewEmailAlreadyExistsSerializer = inline_serializer(
     "NewEmailAlreadyExistsSerializer",
     fields={
         "new_email": CharField(
-            default=MSG_EMAIL_ALREADY_EXIST,
+            default=MSG_EMAIL_IN_USE,
         )
     },
 )
