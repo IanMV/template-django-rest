@@ -1,6 +1,7 @@
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import AccessToken
 
+from core.auth.services import SessionService
 from core.models.user import UserSession
 from tests.base import ApiCase
 
@@ -49,6 +50,15 @@ class SessionTests(ApiCase):
         session.refresh_from_db()
         self.assertFalse(session.is_active)
         self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
+
+    def test_revoke_all_is_idempotent_with_multiple_sessions(self):
+        user = self.create_user()
+        self.login(user)
+        self.login(user, client=self.new_client(), ip="127.0.0.2")
+        SessionService.revoke_all_sessions(user)
+        SessionService.revoke_all_sessions(user)
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 2)
+        self.assertFalse(UserSession.objects.filter(user=user, is_active=True).exists())
 
     def test_session_list_marks_only_current_session(self):
         user = self.create_user()

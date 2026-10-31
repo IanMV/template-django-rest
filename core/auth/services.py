@@ -174,8 +174,10 @@ class SessionService:
     def revoke_all_sessions(user):
         with transaction.atomic():
             tokens = OutstandingToken.objects.filter(user=user)
-            for token in tokens:
-                BlacklistedToken.objects.get_or_create(token=token)
+            BlacklistedToken.objects.bulk_create(
+                [BlacklistedToken(token=token) for token in tokens],
+                ignore_conflicts=True,
+            )
             sessions = UserSession.objects.filter(user=user, is_active=True)
             session_ids = list(sessions.values_list("pk", flat=True))
             sessions.update(is_active=False)
@@ -227,8 +229,10 @@ class AuthService:
                 ip_address=ip_address,
                 is_active=True,
             )
+            replaced_ids = set()
             for session in sessions:
                 SessionService.deactivate_session(user, session.pk)
+                replaced_ids.add(session.pk)
             session = UserSession.objects.create(
                 user=user,
                 device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
@@ -238,7 +242,7 @@ class AuthService:
             )
             refresh["session_id"] = session.pk
             access["session_id"] = session.pk
-        if previous_session:
+        if previous_session and previous_session.pk not in replaced_ids:
             SessionService.deactivate_session(
                 previous_session.user, previous_session.pk
             )
