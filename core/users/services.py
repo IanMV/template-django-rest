@@ -11,8 +11,8 @@ class UserService:
         return User.objects.filter(is_active=True).order_by("-created_at")
 
     @staticmethod
-    def deactivate_user(requesting_user: User, current_password: str):
-        require_current_password(requesting_user, current_password)
+    def deactivate_user(requesting_user: User, current_password: str, request=None):
+        require_current_password(requesting_user, current_password, request=request, action="deactivate_self")
         with transaction.atomic():
             requesting_user.deactivate()
             SessionService.revoke_all_sessions(requesting_user)

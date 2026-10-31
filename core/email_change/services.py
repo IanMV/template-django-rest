@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 class EmailChangeService:
     @staticmethod
     def request_change(
-        user: User, new_email: str, current_password: str, ip_address: str | None = None
+        user: User, new_email: str, current_password: str, ip_address: str | None = None, request=None
     ) -> None:
-        require_current_password(user, current_password)
+        require_current_password(user, current_password, request=request, action="email_change_request")
         limit_code_requests("email-change", new_email, ip_address)
         if User.objects.filter(email=new_email).exists():
             raise serializers.ValidationError(
@@ -39,10 +39,10 @@ class EmailChangeService:
                 change_code.save()
                 def send():
                     try:
-                        send_email_token(new_email, raw_code, "Confirm your new e-mail address")
-                    except Exception as exc:
+                        send_email_token(new_email, raw_code, "email_change", expires_at=change_code.expires_at)
+                    except Exception:
                         EmailChange.objects.filter(pk=change_code.pk).delete()
-                        raise ServiceUnavailable() from exc
+                        raise ServiceUnavailable() from None
 
                 transaction.on_commit(send)
         except Exception as exc:
@@ -61,8 +61,8 @@ class EmailChangeService:
         return True
 
     @staticmethod
-    def confirm_change(user: User, code: str, current_password: str) -> None:
-        require_current_password(user, current_password)
+    def confirm_change(user: User, code: str, current_password: str, request=None) -> None:
+        require_current_password(user, current_password, request=request, action="email_change_confirm")
 
         with transaction.atomic():
             change_code = (

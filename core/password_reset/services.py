@@ -34,10 +34,10 @@ class PasswordResetService:
                 reset_code.save()
                 def send():
                     try:
-                        send_email_token(user.email, raw_code, "Your password reset code")
-                    except Exception:
+                        send_email_token(user.email, raw_code, "password_reset", expires_at=reset_code.expires_at)
+                    except Exception as exc:
                         PasswordReset.objects.filter(pk=reset_code.pk).delete()
-                        logger.exception("Password reset mail delivery failed")
+                        logger.error("Password reset code enqueue failed (%s)", type(exc).__name__)
 
                 transaction.on_commit(send)
         except Exception:
@@ -58,7 +58,7 @@ class PasswordResetService:
         return True
 
     @staticmethod
-    def confirm_reset(email: str, code: str, new_password: str) -> None:
+    def confirm_reset(email: str, code: str, new_password: str) -> User:
         with transaction.atomic():
             reset_code = (
                 PasswordReset.objects.select_for_update()
@@ -78,3 +78,4 @@ class PasswordResetService:
                 SessionService.revoke_all_sessions(user)
         if not valid:
             raise serializers.ValidationError({"code": MSG_CODE_INVALID})
+        return user

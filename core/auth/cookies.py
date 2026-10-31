@@ -6,7 +6,7 @@ from django.http import HttpResponse
 REFRESH_COOKIE_PATH = "/api/refresh/"
 
 
-def get_auth_cookie_kwargs(is_refresh=False):
+def get_auth_cookie_kwargs(is_refresh=False, max_age=None):
     lifetime: timedelta = (
         settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]
         if is_refresh
@@ -14,7 +14,7 @@ def get_auth_cookie_kwargs(is_refresh=False):
     )
 
     return {
-        "max_age": int(lifetime.total_seconds()),
+        "max_age": int(lifetime.total_seconds()) if max_age is None else max_age,
         "httponly": settings.SIMPLE_JWT.get("AUTH_COOKIE_HTTP_ONLY", True),
         "secure": settings.SIMPLE_JWT.get("AUTH_COOKIE_SECURE", False),
         "domain": settings.SIMPLE_JWT.get("AUTH_COOKIE_DOMAIN"),

@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.audit.services import record_event
 from core.auth.cookies import clear_auth_cookies
 from core.auth.services import SessionService
 from core.shared.docs import (
@@ -45,6 +46,7 @@ class RevokeAllSessionsView(APIView):
     )
     def post(self, request):
         SessionService.revoke_all_sessions(request.user)
+        record_event(request, request.user, "SESSION_REVOKE", "SUCCESS", {"scope": "all"})
         response = Response(
             {"detail": MSG_USER_REVOKED_ALL_SESSIONS}, status.HTTP_200_OK
         )
@@ -96,6 +98,7 @@ class UserListView(APIView):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(users, request, view=self)
         serializer = UserListRetrieveSerializer(page, many=True)
+        record_event(request, request.user, "USER_LIST_ACCESS", "SUCCESS")
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -120,7 +123,8 @@ class DeactivateSelfView(APIView):
     def post(self, request):
         serializer = DeactivateSelfSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        UserService.deactivate_user(request.user, serializer.validated_data["password"])
+        UserService.deactivate_user(request.user, serializer.validated_data["password"], request=request)
+        record_event(request, request.user, "SESSION_REVOKE", "SUCCESS", {"scope": "all"})
         response = Response({"detail": MSG_USER_DEACTIVATED}, status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response

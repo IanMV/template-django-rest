@@ -7,6 +7,7 @@ from .base import *  # noqa: F403
 load_dotenv(BASE_DIR / ".env")  # noqa: F405
 
 DEBUG = True
+CELERY_TASK_ALWAYS_EAGER = True
 DEBUG_PROPAGATE_EXCEPTIONS = False
 ALLOWED_HOSTS = []
 SECRET_KEY = os.getenv(

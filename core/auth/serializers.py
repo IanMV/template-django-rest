@@ -5,6 +5,7 @@ from core.models.user import UserSession
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField(write_only=True, required=True)
+    remember_me = serializers.BooleanField(required=False, default=False)
     password = serializers.CharField(
         write_only=True,
         required=True,

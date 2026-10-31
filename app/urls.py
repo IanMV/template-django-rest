@@ -15,4 +15,5 @@ urlpatterns = [
     path("api/email-change/", include("core.email_change.urls")),
     path("api/", include(auth_urls.refresh_urlpatterns)),
     path("api/", include(users_urls.profile_urlpatterns)),
+    path("api/audit/", include("core.audit.urls")),
 ]

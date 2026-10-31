@@ -2,7 +2,7 @@
 
 > **Target Audience:** Autonomous AI coding agents & system architects.  
 > **Repository:** `template-django-rest`  
-> **Core Constraint:** Subordinate to [AGENTS.md](../AGENTS.md). Planning only except completed Feature 7. Preserve cookie-only auth, CSRF enforcement, `core/models/` entity encapsulation, and `ATOMIC_REQUESTS=False`.
+> **Core Constraint:** Subordinate to [AGENTS.md](../AGENTS.md). Features 1, 4a/4b, 5a/5b, 6a, and 7 are implemented; all remaining work is planning only. Preserve cookie-only auth, CSRF enforcement, `core/models/` entity encapsulation, and `ATOMIC_REQUESTS=False`.
 
 ---
 
@@ -44,37 +44,10 @@ flowchart TD
 
 ---
 
-### Feature 1: "Remember Me" with Consistent Refresh Token Rotation
+### Feature 1: Remember Me — IMPLEMENTED
 
-- **Objective:** Enable an optional 30-day extended session on trusted devices that survives the 15-minute access token rotation cycle on `POST /api/refresh/`.
-- **Architecture:**
-  1. **Model Persistence:**
-     In `core/models/user.py`, add field to `UserSession`:
-     ```python
-     remember_me = models.BooleanField(
-         default=False,
-         help_text=_("Whether this session has extended 30-day lifetime."),
-     )
-     ```
-  2. **Login View & Service:**
-     - In `core/auth/serializers.py` (`LoginSerializer`): Add `remember_me = serializers.BooleanField(default=False, required=False)`.
-     - In `core/auth/services.py` (`AuthService.login_user`): Accept `remember_me`. If `True`, set refresh token lifetime to 30 days (`refresh.set_exp(lifetime=timedelta(days=30))`) and save `UserSession(..., remember_me=True)`.
-     - In `core/auth/views.py` (`LoginView.post`): Pass `remember_me` into cookie helper `get_auth_cookie_kwargs(is_refresh=True, remember_me=True)`.
-  3. **Refresh Token Rotation (`POST /api/refresh/`):**
-     - In `core/auth/services.py` (`SessionService.refresh_tokens`):
-       Lock session via `select_for_update()`. Check `session.remember_me`.
-       If `session.remember_me` is `True`:
-       ```python
-       new_refresh = RefreshToken(refresh)
-       new_refresh.set_exp(lifetime=timedelta(days=30))
-       refresh = str(new_refresh)
-       ```
-       Return `{"access": access, "refresh": refresh, "remember_me": session.remember_me}`.
-     - In `core/auth/views.py` (`CustomTokenRefreshView`): Use `token_data["remember_me"]` to set cookie `max_age=2592000` (30 days) on the rotated `refresh_token`.
-- **Required Tests:**
-  - Standard login: `max_age=86400` (1 day).
-  - Remember-me login: `max_age=2592000` (30 days).
-  - Refresh cycle on remember-me session: Rotated cookie retains `max_age=2592000`.
+- Optional login `remember_me` persists on `UserSession`. Standard refresh inactivity 1 day, remembered inactivity 7 days; both absolute limits remain 30 days from creation. Do not reduce the standard absolute cap to 7 days without approval.
+- Login and rotation cap refresh expiration at `min(now + inactivity, created_at + absolute)`; access expiration also respects absolute cap. Cookie `max_age` uses remaining JWT lifetime. Rotation preserves the stored flag and outstanding-token expiry; replacement login sets a new flag. Keep reuse detection, CSRF, paths, cache invalidation and response body unchanged.
 
 ---
 
@@ -124,76 +97,23 @@ flowchart TD
 
 ---
 
-### Feature 4: Async Infrastructure (Celery + Redis & Safe Maintenance Purge)
+### Feature 4a: Async Mail — IMPLEMENTED
 
-- **Objective:** Offload email dispatch, notifications, and scheduled database sweeps to background workers without HTTP request latency or DB lock contention.
-- **Package & Entity:**
-  - Setup: `app/celery.py`, `app/__init__.py`, `app/settings/base.py`.
-  - Tasks: `core/shared/tasks.py`, `core/registration/tasks.py`.
-  - Dependencies: `celery[redis]>=5.4.0`, `django-redis>=5.4.0`.
-- **Implementation:**
-  1. **Celery Worker Configuration (`app/celery.py`):**
-     ```python
-     import os
-     from celery import Celery
+- `celery[redis]>=5.6,<5.7` requires Redis Python client `>=6.2,<6.5` (Kombu constraint). Redis broker on cache DB + 2 with verified TLS for credentialed `rediss://`; `redis://` only on private networks. Require explicit worker `DJANGO_SETTINGS_MODULE`; use JSON, ignore results, retry broker connection on startup.
+- Render subject and text/HTML before enqueue on commit; task carries only rendered data, expires no later than issued code, redacts argument representations, retries SMTP/network failures only, and logs permanent failures without secrets. Queue failure removes the issued code and returns 503 for registration/email change; password-reset response remains uniform 200. Accepted deliveries cannot retroactively change HTTP responses.
+- Dev/test eager tasks; test harness propagates task failures to tests.
 
-     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "app.settings.dev")
-     app = Celery("app")
-     app.config_from_object("django.conf:settings", namespace="CELERY")
-     app.autodiscover_tasks()
-     ```
-  2. **Asynchronous Mailer Task (`core/shared/tasks.py`):**
-     ```python
-     from celery import shared_task
-     from django.core.mail import EmailMultiAlternatives
+### Feature 4b: Maintenance Purge — IMPLEMENTED
 
-     @shared_task(autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
-     def send_async_email(to_email: str, subject: str, text_body: str, html_body: str | None = None) -> None:
-         msg = EmailMultiAlternatives(subject=subject, body=text_body, to=[to_email])
-         if html_body:
-             msg.attach_alternative(html_body, "text/html")
-         msg.send()
-     ```
-  3. **Safe Celery Beat Purge Task (`core/registration/tasks.py`):**
-     ```python
-     from datetime import timedelta
-     from celery import shared_task
-     from django.utils import timezone
-     from core.models.user import User, UserSession
-
-     @shared_task
-     def daily_maintenance_purge_task():
-         now = timezone.now()
-
-         # 1. Purge abandoned unconfirmed registrations (>48h)
-         # CRITICAL: emailverification__used=False prevents deleting self-deactivated accounts!
-         cutoff_reg = now - timedelta(hours=48)
-         deleted_users, _ = User.objects.filter(
-             is_active=False,
-             created_at__lt=cutoff_reg,
-             emailverification__isnull=False,
-             emailverification__used=False,
-         ).delete()
-
-         # 2. Purge inactive sessions older than 30 days
-         cutoff_sessions = now - timedelta(days=30)
-         deleted_sessions, _ = UserSession.objects.filter(
-             is_active=False,
-             last_activity__lt=cutoff_sessions,
-         ).delete()
-
-         return {"purged_registrations": deleted_users, "purged_sessions": deleted_sessions}
-     ```
-  4. **Schedule Definition (`app/settings/base.py`):** Run `daily_maintenance_purge_task` daily at 03:00 AM.
-  5. **Test Scope:** Enforce `CELERY_TASK_ALWAYS_EAGER = True` in `tests/base.py`.
+- Single Celery Beat process dispatches `core/registration/tasks.py:daily_maintenance_purge_task` at 03:00 application time zone. Batch-delete inactive unconfirmed registrations older than 48 hours with an existing, unused, expired verification; preserve self-deactivated accounts. Revoke and delete active sessions past the standard/remembered absolute cap; delete inactive sessions stale 30 days. Run stock Simple JWT `flushexpiredtokens` (the stock command is not batched). Delete old audit records only with positive configured `AUDIT_RETENTION_DAYS`; default `None` retains them until a legal retention decision. Return aggregate counts without PII.
 
 ---
 
-### Feature 5: Immutable Forensic Audit Trail (`AuditLog`)
+### Feature 5a/5b: Audit Trail (`AuditLog`) — IMPLEMENTED AT APPLICATION LAYER
 
-- **Objective:** Tamper-evident logging of security events (logins, failed credentials, password resets, session revocations, rate limit triggers) compliant with Marco Civil da Internet Art. 15 and ISO 27001.
+- **Objective:** Log security events without credentials or raw unknown-account emails. Application-level read-only API does not provide tamper evidence or certify legal compliance; enforce PostgreSQL append-only roles/retention policy in Feature 8.
 - **Package & Entity:**
-  - Package: `core/audit/` (`services.py`, `admin.py`, `middleware.py`).
+  - Package: `core/audit/` (`services.py`, `serializers.py`, `views.py`, `urls.py`); no new admin or middleware.
   - Model: `core/models/audit_log.py`.
 - **Model Definition:**
   ```python
@@ -223,8 +143,7 @@ flowchart TD
           ]
   ```
 - **Strict Data Blacklist (Never Log):** Passwords, password hashes, 6-digit OTP codes, TOTP secrets, backup codes, JWT tokens, CSRF tokens, session cookies.
-- **Admin Imutability:** `has_add_permission=False`, `has_change_permission=False`, `has_delete_permission=False`.
-- **Required Tests:** Log creation on successful and failed login; persistence of log record with snapshot UUID when user is deleted.
+- **Access:** Existing `/admin/` remains unchanged. `GET /api/audit/` is staff-only, paginated, and read-only; `AuditLog` is not registered in Django admin. Service filters details by event-specific key and allowed value, parses/sanitizes user-agent, snapshots the UUID and logs audit-write errors without interrupting authentication. BLOCKED events are deduplicated by cache key. Failure events are recorded outside business transactions. Tests were explicitly prohibited in this task; add audit/maintenance behavioral tests before production use.
 
 ---
 

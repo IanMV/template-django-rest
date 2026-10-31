@@ -20,6 +20,7 @@ class ContractTests(ApiCase):
             "email-change-confirm": ("post", "/api/email-change/confirm/"),
             "me": ("get", "/api/users/me/"),
             "users-list": ("get", "/api/users/list/"),
+            "audit-list": ("get", "/api/audit/"),
         }
 
         def named(patterns, prefix=""):
@@ -86,6 +87,15 @@ class ContractTests(ApiCase):
             self.assertIn("503", operation["responses"])
             component = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
             self.assertIn("password", schema["components"]["schemas"][component]["required"])
+
+    def test_remember_me_is_optional_in_login_schema(self):
+        schema = self.client.get("/api/docs/schema/?format=json").json()
+        operation = schema["paths"]["/api/login/"]["post"]
+        component = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
+        request = schema["components"]["schemas"][component]
+        self.assertEqual(request["properties"]["remember_me"]["type"], "boolean")
+        self.assertNotIn("remember_me", request["required"])
+        self.assertEqual(operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1], "LoginSuccessfulResponse")
 
     def test_other_session_deletion_does_not_require_password(self):
         user = self.create_user()
@@ -236,6 +246,23 @@ class ContractTests(ApiCase):
             self.assertEqual(
                 prod.DATABASES["default"]["OPTIONS"], {"sslmode": "require"}
             )
+            self.assertEqual(prod.CELERY_BROKER_URL, "redis://localhost:6379/2")
+
+        import ssl
+
+        env["REDIS_URL"] = "rediss://worker:secret@redis.internal:6380/3"
+        with patch.dict(os.environ, env, clear=True):
+            prod = importlib.reload(app.settings.prod)
+            self.assertEqual(
+                prod.CELERY_BROKER_URL,
+                "rediss://worker:secret@redis.internal:6380/5",
+            )
+            self.assertEqual(prod.CELERY_BROKER_USE_SSL, {"ssl_cert_reqs": ssl.CERT_REQUIRED})
+
+        env["REDIS_URL"] += "?ssl_cert_reqs=none"
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(ImproperlyConfigured):
+                importlib.reload(app.settings.prod)
 
     def test_single_session_deactivation_is_atomic_and_blacklists_refresh(self):
         from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
@@ -264,5 +291,3 @@ class ContractTests(ApiCase):
         self.assertEqual(len(active_sessions), 1)
         self.assertNotEqual(active_sessions[0].pk, sessions1[0].pk)
         self.assertFalse(UserSession.objects.get(pk=sessions1[0].pk).is_active)
-
-

@@ -1,12 +1,15 @@
+import time
+
 from django.middleware import csrf
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, Throttled
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from core.audit.services import email_digest, record_event
 from core.auth.authenticate import enforce_csrf
 from core.auth.cookies import (
     clear_auth_cookies,
@@ -65,12 +68,12 @@ class LoginView(APIView):
     @extend_schema(
         tags=["auth"],
         summary="Log in and set authentication cookies",
-        description="Step 2: after GET /api/login/, send the CSRF header and email/password. A successful response contains only detail and sets HttpOnly access_token and refresh_token cookies (the access cookie name follows SIMPLE_JWT.AUTH_COOKIE). Existing matching sessions are revoked. Do not enter a JWT in Swagger's cookie authorization field; use the browser cookies.",
+        description="Step 2: after GET /api/login/, send the CSRF header and email/password; optional remember_me extends refresh inactivity to seven days (standard: one day). The absolute lifetime remains 30 days. Success returns only detail and sets HttpOnly access_token and refresh_token cookies (the access cookie name follows SIMPLE_JWT.AUTH_COOKIE). Existing matching sessions are revoked. Do not enter a JWT in Swagger's cookie authorization field; use the browser cookies.",
         auth=[{"csrfHeader": []}],
         examples=[
             OpenApiExample(
                 "Login credentials",
-                value={"email": "person@example.com", "password": "your-password"},
+                value={"email": "person@example.com", "password": "your-password", "remember_me": True},
                 request_only=True,
             ),
             OpenApiExample(
@@ -95,17 +98,32 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        token_data = AuthService.login_user(
-            email=serializer.validated_data.get("email"),
-            password=serializer.validated_data.get("password"),
-            user_agent_string=request.META.get("HTTP_USER_AGENT", ""),
-            ip_address=get_client_ip(request),
-            raw_access_token=request.COOKIES.get(get_auth_cookie_name()),
-        )
+        email = serializer.validated_data["email"]
+        details = {"email_hash": email_digest(email)}
+        try:
+            token_data = AuthService.login_user(
+                email=email,
+                password=serializer.validated_data["password"],
+                user_agent_string=request.META.get("HTTP_USER_AGENT", ""),
+                ip_address=get_client_ip(request),
+                raw_access_token=request.COOKIES.get(get_auth_cookie_name()),
+                remember_me=serializer.validated_data["remember_me"],
+            )
+        except Throttled:
+            record_event(request, None, "LOGIN", "BLOCKED", details)
+            raise
+        except AuthenticationFailed:
+            record_event(request, None, "LOGIN", "FAILURE", details)
+            raise
+        record_event(request, token_data["user"], "LOGIN", "SUCCESS", {**details, "session_id": token_data["session_id"]})
 
         response = Response({"detail": MSG_LOGIN_SUCCESSFUL}, status.HTTP_200_OK)
-        access_cookie_kwargs = get_auth_cookie_kwargs(is_refresh=False)
-        refresh_cookie_kwargs = get_auth_cookie_kwargs(is_refresh=True)
+        access_cookie_kwargs = get_auth_cookie_kwargs(
+            max_age=max(0, token_data["access_exp"] - int(time.time()))
+        )
+        refresh_cookie_kwargs = get_auth_cookie_kwargs(
+            is_refresh=True, max_age=max(0, token_data["refresh_exp"] - int(time.time()))
+        )
 
         response.set_cookie(
             get_auth_cookie_name(), token_data["access"], **access_cookie_kwargs
@@ -156,20 +174,26 @@ class CustomTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
         enforce_csrf(request)
         token_data = SessionService.refresh_tokens(
-            request.COOKIES.get("refresh_token"), self.get_serializer
+            request.COOKIES.get("refresh_token"), self.get_serializer, request=request
         )
+        record_event(request, token_data["user"], "REFRESH", "SUCCESS", {"session_id": token_data["session_id"]})
         response = Response(
             {"detail": MSG_REFRESH_TOKENS_SUCCESSFUL}, status.HTTP_200_OK
         )
         response.set_cookie(
             get_auth_cookie_name(),
             token_data["access"],
-            **get_auth_cookie_kwargs(is_refresh=False),
+            **get_auth_cookie_kwargs(
+                max_age=max(0, token_data["access_exp"] - int(time.time()))
+            ),
         )
         response.set_cookie(
             "refresh_token",
             token_data["refresh"],
-            **get_auth_cookie_kwargs(is_refresh=True),
+            **get_auth_cookie_kwargs(
+                is_refresh=True,
+                max_age=max(0, token_data["refresh_exp"] - int(time.time())),
+            ),
         )
         clear_legacy_refresh_cookie(response)
 
@@ -195,6 +219,7 @@ class LogoutView(APIView):
         SessionService.logout_user(
             request.user, request.auth
         )
+        record_event(request, request.user, "LOGOUT", "SUCCESS")
         response = Response({"detail": MSG_LOGOUT_SUCCESSFUL}, status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response

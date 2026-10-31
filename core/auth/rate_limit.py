@@ -5,6 +5,7 @@ from django.core.cache import cache
 from rest_framework import serializers
 from rest_framework.exceptions import Throttled
 
+from core.audit.services import record_event
 from core.shared.exceptions import ServiceUnavailable
 from core.shared.response_messages import MSG_INVALID_PASSWORD
 
@@ -92,15 +93,19 @@ def reset_login_attempts(email: str, ip_address: str | None) -> None:
         logger.exception("Login throttle reset unavailable; continuing")
 
 
-def require_current_password(user, password: str) -> None:
+def require_current_password(user, password: str, *, request=None, action=None) -> None:
     user_digest = hashlib.sha256(str(user.pk).encode()).hexdigest()
     key = f"reauth:user:{user_digest}"
     try:
         attempts = cache.get(key, 0) or 0
     except Exception as exc:
         logger.exception("Reauthentication throttle unavailable")
+        if request:
+            record_event(request, user, "REAUTH", "FAILURE", {"action": action})
         raise ServiceUnavailable() from exc
     if attempts >= 5:
+        if request:
+            record_event(request, user, "REAUTH", "BLOCKED", {"action": action})
         raise Throttled(wait=300)
 
     valid = user.check_password(password)
@@ -117,11 +122,17 @@ def require_current_password(user, password: str) -> None:
                     cache.add(key, 1, timeout=300)
                     failures = 1
             if failures > 5:
+                if request:
+                    record_event(request, user, "REAUTH", "BLOCKED", {"action": action})
                 raise Throttled(wait=300)
     except Throttled:
         raise
     except Exception as exc:
         logger.exception("Reauthentication throttle unavailable")
+        if request:
+            record_event(request, user, "REAUTH", "FAILURE", {"action": action})
         raise ServiceUnavailable() from exc
     if not valid:
+        if request:
+            record_event(request, user, "REAUTH", "FAILURE", {"action": action})
         raise serializers.ValidationError({"password": MSG_INVALID_PASSWORD})

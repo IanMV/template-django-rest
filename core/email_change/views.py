@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.audit.services import record_event
 from core.auth.cookies import clear_auth_cookies
 from core.auth.rate_limit import limit_code_verification_attempts
 from core.email_change.serializers import (
@@ -78,6 +79,7 @@ class EmailChangeRequestView(APIView):
             new_email=serializer.validated_data["new_email"],
             current_password=serializer.validated_data["password"],
             ip_address=get_client_ip(request),
+            request=request,
         )
         return Response({"detail": MSG_CODE_SENT}, status=status.HTTP_200_OK)
 
@@ -156,7 +158,9 @@ class EmailChangeConfirmView(APIView):
             user=request.user,
             code=serializer.validated_data["code"],
             current_password=serializer.validated_data["password"],
+            request=request,
         )
+        record_event(request, request.user, "EMAIL_CHANGE", "SUCCESS")
         response = Response({"detail": MSG_EMAIL_CHANGED}, status=status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response

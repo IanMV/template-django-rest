@@ -112,7 +112,12 @@ UserRevokedAllSessionsSerializer = inline_serializer(
 
 LoginSuccessfulSerializer = inline_serializer(
     "LoginSuccessfulResponse",
-    {"detail": CharField(default=MSG_LOGIN_SUCCESSFUL)},
+    {
+        "detail": CharField(
+            default=MSG_LOGIN_SUCCESSFUL,
+            help_text="Access and refresh tokens are set in HttpOnly cookies; remember_me changes refresh lifetime, not the response body.",
+        )
+    },
 )
 
 LogoutSuccessfulSerializer = inline_serializer(

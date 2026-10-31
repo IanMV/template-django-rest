@@ -1,14 +1,13 @@
 import logging
 import secrets
 
-from django.core.mail import EmailMessage
 from django.db import transaction
 from rest_framework import serializers
 
 from core.auth.rate_limit import limit_code_requests
 from core.models.email_verification import EmailVerification
 from core.models.user import User
-from core.shared.email_token_sender import send_email_token
+from core.shared.email_token_sender import queue_email, send_email_token
 from core.shared.exceptions import ServiceUnavailable
 from core.shared.response_messages import MSG_CODE_INVALID
 
@@ -27,16 +26,14 @@ class RegistrationService:
                 if not created and user.is_active:
                     def notify():
                         try:
-                            EmailMessage(
-                                subject="Registration attempt on existing account",
-                                body=(
-                                    "Registration attempt on existing account. "
-                                    "If this was you, please log in or reset your password."
-                                ),
-                                to=[user.email],
-                            ).send()
-                        except Exception:
-                            logger.exception("Registration security notice delivery failed")
+                            queue_email(
+                                user.email,
+                                "Registration attempt on existing account",
+                                "Registration attempt on existing account. "
+                                "If this was you, please log in or reset your password.",
+                            )
+                        except Exception as exc:
+                            logger.error("Registration security notice enqueue failed (%s)", type(exc).__name__)
 
                     transaction.on_commit(notify)
                     return
@@ -47,8 +44,8 @@ class RegistrationService:
                 verification.save()
                 def send():
                     try:
-                        send_email_token(user.email, raw_code, "Verify your e-mail")
-                    except Exception as exc:
+                        send_email_token(user.email, raw_code, "verification_code", expires_at=verification.expires_at)
+                    except Exception:
                         EmailVerification.objects.filter(pk=verification.pk).delete()
                         if created:
                             User.objects.filter(
@@ -56,7 +53,7 @@ class RegistrationService:
                                 is_active=False,
                                 emailverification__isnull=True,
                             ).delete()
-                        raise ServiceUnavailable() from exc
+                        raise ServiceUnavailable() from None
 
                 transaction.on_commit(send)
         except Exception as exc:

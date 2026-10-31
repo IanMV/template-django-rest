@@ -1,4 +1,5 @@
 import os
+import ssl
 from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
 
 from django.core.exceptions import ImproperlyConfigured
@@ -6,6 +7,14 @@ from django.core.exceptions import ImproperlyConfigured
 from .base import *  # noqa: F403
 
 DEBUG = False
+retention = os.getenv("AUDIT_RETENTION_DAYS")
+if retention is not None:
+    try:
+        AUDIT_RETENTION_DAYS = int(retention)
+        if AUDIT_RETENTION_DAYS <= 0:
+            raise ValueError
+    except ValueError as exc:
+        raise ImproperlyConfigured("AUDIT_RETENTION_DAYS must be a positive integer.") from exc
 NUM_PROXIES = int(os.getenv("NUM_PROXIES", "0"))
 SIMPLE_JWT = {**SIMPLE_JWT, "AUTH_COOKIE_SECURE": True}  # noqa: F405
 CSRF_COOKIE_SECURE = True
@@ -55,6 +64,12 @@ redis_url = os.getenv("REDIS_URL")
 if not redis_url:
     raise ImproperlyConfigured("REDIS_URL is required in production.")
 redis_parts = urlsplit(redis_url)
+if redis_parts.scheme not in ("redis", "rediss") or not redis_parts.hostname:
+    raise ImproperlyConfigured("REDIS_URL must be a redis:// or rediss:// URL with a host.")
+if redis_parts.scheme == "rediss" and (
+    not redis_parts.password or "ssl_cert_reqs" in parse_qs(redis_parts.query)
+):
+    raise ImproperlyConfigured("rediss:// requires credentials and verified TLS.")
 if "db" in parse_qs(redis_parts.query, keep_blank_values=True):
     raise ImproperlyConfigured("Specify the Redis DB index in REDIS_URL's path.")
 try:
@@ -75,6 +90,10 @@ CACHES = {
         "KEY_PREFIX": "sessions",
     },
 }
+CELERY_BROKER_URL = urlunsplit(redis_parts._replace(path=f"/{redis_db + 2}"))
+CELERY_BROKER_USE_SSL = (
+    {"ssl_cert_reqs": ssl.CERT_REQUIRED} if redis_parts.scheme == "rediss" else None
+)
 
 MAILERS = {
     "default": {
@@ -99,4 +118,3 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = (
 )
 SECURE_HSTS_PRELOAD = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-

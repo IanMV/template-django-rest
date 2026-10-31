@@ -30,15 +30,18 @@ class BehaviorHelpers:
         )
 
     def login(
-        self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser"
+        self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser", remember_me=False
     ):
         client = client or self.client
         bootstrap = client.get("/api/login/", REMOTE_ADDR=ip)
         self.assertEqual(bootstrap.status_code, 204)
         client.credentials(HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
+        payload = {"email": user.email, "password": password or self.password}
+        if remember_me:
+            payload["remember_me"] = True
         response = client.post(
             "/api/login/",
-            {"email": user.email, "password": password or self.password},
+            payload,
             format="json",
             REMOTE_ADDR=ip,
             HTTP_USER_AGENT=agent,
@@ -61,6 +64,8 @@ class BehaviorHelpers:
 
 @override_settings(
     MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},
+    CELERY_TASK_ALWAYS_EAGER=True,
+    CELERY_TASK_EAGER_PROPAGATES=True,
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
     SECRET_KEY="django-insecure-test-key-with-strictly-more-than-thirty-two-bytes-12345",
 )
@@ -70,6 +75,8 @@ class ApiCase(BehaviorHelpers, TestCase):
 
 @override_settings(
     MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},
+    CELERY_TASK_ALWAYS_EAGER=True,
+    CELERY_TASK_EAGER_PROPAGATES=True,
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
     SECRET_KEY="django-insecure-test-key-with-strictly-more-than-thirty-two-bytes-12345",
 )

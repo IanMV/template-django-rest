@@ -43,5 +43,39 @@
 
 ## 2. Open Items
 
-*No open backlog items.*
+### P1. Preserve refresh-token reuse detection during concurrent refreshes
 
+- In `SessionService.refresh_tokens`, a request parses its refresh token before taking the session lock. If two requests start together, the first can rotate the token; the second then finds no row with the old JTI and returns at the `not session` branch without calling `revoke_reused_refresh`.
+- After serialization, detect whether the old token is now blacklisted and the same active session has a different refresh JTI; revoke that session as required by the reuse contract. Keep invalid-token responses indistinguishable.
+
+### P1. Define and enforce one email identity policy
+
+- Registration and email change store serializer input directly, while password reset and authentication perform exact email lookups. `EmailField` validation does not make the database identity case-insensitive; e.g. `Person@example.com` and `Person@EXAMPLE.COM` can create separate rows although delivery targets the same domain mailbox.
+- Choose a canonicalization policy, apply it consistently to registration, login, reset, and email change, and enforce it in the database. Before migration, find and resolve existing collisions without merging accounts automatically.
+
+### P2. Bound token-blacklist and stale-session storage
+
+- `SessionService.revoke_all_sessions` iterates every `OutstandingToken` for a user, including expired tokens; no tracked code or workflow runs Simple JWT's expired-token cleanup. Token rows and blacklist work therefore grow with account lifetime and make later revocations slower.
+- Add a scheduled/operational `flushexpiredtokens` cleanup and avoid blacklisting expired tokens. Also define cleanup for inactive-or-expired `UserSession` rows; expired refresh tokens currently leave rows marked active and visible in the session list indefinitely.
+
+### P2. Validate production Redis and proxy settings
+
+- `app/settings/prod.py` parses the Redis DB path but accepts unsupported or hostless `REDIS_URL` values; these can let startup succeed while cache operations fail at request time. Negative `NUM_PROXIES` values also silently disable forwarded-client-IP handling.
+- Validate `REDIS_URL` scheme (`redis`/`rediss`) and hostname, and require `NUM_PROXIES >= 0` at startup. Do not add a Redis connectivity probe unless deployment requires fail-fast network checks.
+
+### P3. Remove or correct stale response-message comments
+
+- `core/shared/response_messages.py:3-4,18-19` says these constants are used by `response_serializers.py`, which does not exist in the tracked tree.
+- Remove the stale comments or name the actual consumers (`views.py` and `core/shared/docs.py`).
+
+### P3. Wire or remove the unused vulnerability-audit dependency
+
+- `pip-audit` is in the `dev` dependency group, but no PDM script or CI workflow invokes it; `.github/workflows/ruff.yml` installs only the `lint` group.
+- Add an explicit CI/script invocation if dependency auditing is intended now; otherwise remove the unused development dependency until that planned feature is implemented.
+
+### Authorized feature status: audit and maintenance
+
+- Feature 1 was already implemented before this change; keep standard absolute lifetime at 30 days until a reduction to 7 days receives explicit approval.
+- Feature 5a/5b adds `AuditLog`, best-effort event recording, staff-only paginated `GET /api/audit/`, and no new Django admin. Database append-only permissions and any legal retention period remain undecided; do not claim tamper evidence or regulatory compliance.
+- Feature 4b adds a single-Beat 03:00 cleanup task with bounded application-level batches. The stock Simple JWT `flushexpiredtokens` command itself is not batched. Audit retention defaults to disabled (`AUDIT_RETENTION_DAYS=None`) until a positive period is approved.
+- Behavioral tests were explicitly prohibited for this change. Run authorization, rollback, sanitization, maintenance-survival and production-topology tests only after explicit permission.

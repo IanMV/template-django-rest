@@ -1,5 +1,6 @@
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import patch
 
 from django.core.cache import cache
@@ -222,6 +223,11 @@ class ReauthenticationRateLimitTests(ApiCase):
         cache.set(key, 4, timeout=300)
 
         results = []
+        barrier = Barrier(5)
+
+        def check_password(_password):
+            barrier.wait(timeout=5)
+            return False
 
         def worker():
             try:
@@ -232,10 +238,11 @@ class ReauthenticationRateLimitTests(ApiCase):
             except Throttled:
                 results.append("429")
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(worker) for _ in range(5)]
-            for future in futures:
-                future.result()
+        with patch.object(user, "check_password", side_effect=check_password):
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(worker) for _ in range(5)]
+                for future in futures:
+                    future.result()
 
         self.assertEqual(sorted(results), ["400", "429", "429", "429", "429"])
         self.assertEqual(cache.get(key), 9)
@@ -268,4 +275,3 @@ class ReauthenticationRateLimitTests(ApiCase):
             with self.assertLogs("core.auth.rate_limit", level="ERROR"):
                 with self.assertRaises(ServiceUnavailable):
                     require_current_password(user, "wrong-password")
-

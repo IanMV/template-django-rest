@@ -1,6 +1,8 @@
 from datetime import timedelta
 from pathlib import Path
 
+from celery.schedules import crontab
+
 # from django.contrib import messages
 
 
@@ -8,6 +10,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 NUM_PROXIES = 0
 SESSION_CACHE_TTL = 60
 SESSION_ABSOLUTE_LIFETIME = timedelta(days=30)
+SESSION_REMEMBERED_ABSOLUTE_LIFETIME = timedelta(days=30)
+SESSION_REMEMBERED_INACTIVITY_LIFETIME = timedelta(days=7)
+AUDIT_RETENTION_DAYS = None
+CELERY_BROKER_URL = "memory://"
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_SCHEDULE = {
+    "daily-maintenance-purge": {
+        "task": "core.registration.tasks.daily_maintenance_purge_task",
+        "schedule": crontab(hour=3, minute=0),
+    }
+}
 CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
     "sessions": {
@@ -72,6 +88,7 @@ TEMPLATES = [
     },
 ]
 TIME_ZONE = "America/Sao_Paulo"
+CELERY_TIMEZONE = TIME_ZONE
 WSGI_APPLICATION = "app.wsgi.application"
 AUTH_USER_MODEL = "core.User"
 AUTH_PASSWORD_VALIDATORS = [

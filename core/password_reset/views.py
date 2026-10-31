@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.audit.services import record_event
 from core.auth.cookies import clear_auth_cookies
 from core.auth.rate_limit import limit_code_verification_attempts
 from core.password_reset.serializers import (
@@ -140,11 +141,16 @@ class PasswordResetConfirmView(APIView):
         serializer.is_valid(raise_exception=True)
 
         limit_code_verification_attempts(get_client_ip(request))
-        PasswordResetService.confirm_reset(
-            email=serializer.validated_data["email"],
-            code=serializer.validated_data["code"],
-            new_password=serializer.validated_data["new_password"],
-        )
+        try:
+            user = PasswordResetService.confirm_reset(
+                email=serializer.validated_data["email"],
+                code=serializer.validated_data["code"],
+                new_password=serializer.validated_data["new_password"],
+            )
+        except Exception:
+            record_event(request, None, "PASSWORD_RESET", "FAILURE")
+            raise
+        record_event(request, user, "PASSWORD_RESET", "SUCCESS")
 
         response = Response({"detail": MSG_PASSWORD_RESET}, status.HTTP_200_OK)
         clear_auth_cookies(response)

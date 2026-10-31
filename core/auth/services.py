@@ -12,6 +12,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, UntypedToken
 from user_agents import parse
 
+from core.audit.services import record_event
 from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
 from core.auth.session_cache import invalidate_sessions
 from core.models import User, UserSession
@@ -26,16 +27,40 @@ from core.shared.response_messages import (
 
 class SessionService:
     @staticmethod
-    def refresh_tokens(refresh_token_str, serializer_factory):
+    def refresh_expiry(session, now):
+        inactivity = (
+            settings.SESSION_REMEMBERED_INACTIVITY_LIFETIME
+            if session.remember_me
+            else settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]
+        )
+        absolute = (
+            settings.SESSION_REMEMBERED_ABSOLUTE_LIFETIME
+            if session.remember_me
+            else settings.SESSION_ABSOLUTE_LIFETIME
+        )
+        return min(now + inactivity, session.created_at + absolute)
+
+    @staticmethod
+    def refresh_tokens(refresh_token_str, serializer_factory, request=None):
         if not refresh_token_str:
             raise AuthenticationFailed(MSG_NO_REFRESH_TOKEN_PROVIDED)
         try:
             old_token = RefreshToken(refresh_token_str)
             old_jti = str(old_token.get("jti", ""))
         except TokenError as exc:
-            SessionService.revoke_reused_refresh(refresh_token_str)
+            SessionService.revoke_reused_refresh(refresh_token_str, request=request)
             raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN) from exc
 
+        try:
+            return SessionService._rotate_refresh(
+                old_token, old_jti, refresh_token_str, serializer_factory, request
+            )
+        except AuthenticationFailed:
+            # A token validated before a concurrent rotation may now be blacklisted.
+            SessionService.revoke_reused_refresh(refresh_token_str, request=request)
+            raise
+    @staticmethod
+    def _rotate_refresh(old_token, old_jti, refresh_token_str, serializer_factory, request):
         expired = False
         with transaction.atomic():
             session = (
@@ -50,7 +75,9 @@ class SessionService:
                 or str(old_token.get("user_id", "")) != str(session.user_id)
             ):
                 raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
-            if timezone.now() >= session.created_at + settings.SESSION_ABSOLUTE_LIFETIME:
+            now = timezone.now()
+            expiry = SessionService.refresh_expiry(session, now)
+            if now >= expiry:
                 SessionService.deactivate_session(session.user, session.pk)
                 expired = True
             else:
@@ -65,9 +92,19 @@ class SessionService:
                     raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
                 new_refresh = RefreshToken(response_data["refresh"])
                 new_refresh["session_id"] = session.pk
+                new_refresh.set_exp(from_time=now, lifetime=expiry - now)
                 new_access = new_refresh.access_token
+                new_access.set_exp(
+                    from_time=now,
+                    lifetime=min(
+                        settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"], expiry - now
+                    ),
+                )
                 access = str(new_access)
                 refresh = str(new_refresh)
+                OutstandingToken.objects.filter(jti=str(new_refresh["jti"])).update(
+                    token=refresh, expires_at=expiry
+                )
                 if not SessionService.update_session_jtis(
                     old_refresh_jti=old_jti,
                     new_access_jti=str(new_access["jti"]),
@@ -76,11 +113,20 @@ class SessionService:
                     raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
                 invalidate_sessions([session.pk])
         if expired:
+            if request:
+                record_event(request, session.user, "SESSION_ABSOLUTE_EXPIRED", "FAILURE", {"session_id": session.pk})
             raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
-        return {"access": access, "refresh": refresh}
+        return {
+            "access": access,
+            "refresh": refresh,
+            "access_exp": new_access["exp"],
+            "refresh_exp": new_refresh["exp"],
+            "user": session.user,
+            "session_id": session.pk,
+        }
 
     @staticmethod
-    def revoke_reused_refresh(raw_token):
+    def revoke_reused_refresh(raw_token, request=None):
         try:
             token = UntypedToken(raw_token)
         except TokenError:
@@ -105,6 +151,11 @@ class SessionService:
             )
             if session and session.refresh_jti != old_jti:
                 SessionService.deactivate_session(session.user, session.pk)
+                user = session.user
+            else:
+                user = None
+        if user and request:
+            record_event(request, user, "REFRESH_REUSE", "BLOCKED", {"session_id": session_id})
 
     @staticmethod
     def logout_user(user, token):
@@ -208,7 +259,7 @@ class SessionService:
 class AuthService:
     @staticmethod
     def login_user(
-        email, password, user_agent_string, ip_address, raw_access_token=None
+        email, password, user_agent_string, ip_address, raw_access_token=None, remember_me=False
     ):
         limit_login_attempts(email, ip_address)
         previous_session = None
@@ -266,12 +317,27 @@ class AuthService:
                 ip_address=ip_address,
                 access_jti=str(access["jti"]),
                 refresh_jti=jti_refresh,
+                remember_me=remember_me,
             )
             refresh["session_id"] = session.pk
             access["session_id"] = session.pk
+            now = timezone.now()
+            expiry = SessionService.refresh_expiry(session, now)
+            refresh.set_exp(from_time=now, lifetime=expiry - now)
+            access.set_exp(
+                from_time=now,
+                lifetime=min(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"], expiry - now),
+            )
+            OutstandingToken.objects.filter(jti=jti_refresh).update(
+                token=str(refresh), expires_at=expiry
+            )
         reset_login_attempts(email, ip_address)
 
         return {
             "refresh": str(refresh),
             "access": str(access),
+            "refresh_exp": refresh["exp"],
+            "access_exp": access["exp"],
+            "user": user,
+            "session_id": session.pk,
         }

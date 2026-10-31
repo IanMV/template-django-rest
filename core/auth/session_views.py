@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.audit.services import record_event
 from core.auth.serializers import UserSessionSerializer
 from core.auth.services import SessionService
 from core.shared.docs import (
@@ -47,6 +48,7 @@ class UserSessionsDeactivateView(APIView):
         SessionService.deactivate_other_session(
             request.user, session_id, request.auth
         )
+        record_event(request, request.user, "SESSION_REVOKE", "SUCCESS", {"scope": "other", "session_id": session_id})
         return Response({"detail": MSG_USER_SESSION_DEACTIVATED}, status.HTTP_200_OK)
 
 
