@@ -8,6 +8,7 @@ load_dotenv()
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+NUM_PROXIES = 0
 APPEND_SLASH = True
 CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
 CSRF_TRUSTED_ORIGINS = [

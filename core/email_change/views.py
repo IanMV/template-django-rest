@@ -11,6 +11,7 @@ from core.email_change.serializers import (
     EmailChangeVerifySerializer,
 )
 from core.email_change.services import EmailChangeService
+from core.shared.client_ip import get_client_ip
 from core.shared.docs import (
     CodeIsValidSerializer,
     CsrfFailureExample,
@@ -68,7 +69,7 @@ class EmailChangeRequestView(APIView):
         EmailChangeService.request_change(
             user=request.user,
             new_email=serializer.validated_data["new_email"],
-            ip_address=request.META.get("REMOTE_ADDR"),
+            ip_address=get_client_ip(request),
         )
         return Response({"detail": MSG_CODE_SENT}, status=status.HTTP_200_OK)
 

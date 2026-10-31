@@ -10,6 +10,7 @@ from core.password_reset.serializers import (
     PasswordResetVerifySerializer,
 )
 from core.password_reset.services import PasswordResetService
+from core.shared.client_ip import get_client_ip
 from core.shared.docs import (
     CodeIsValidSerializer,
     InvalidCodeExample,
@@ -56,7 +57,7 @@ class PasswordResetRequestView(APIView):
         serializer.is_valid(raise_exception=True)
 
         PasswordResetService.request_reset(
-            serializer.validated_data["email"], request.META.get("REMOTE_ADDR")
+            serializer.validated_data["email"], get_client_ip(request)
         )
 
         return Response(

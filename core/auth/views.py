@@ -15,6 +15,7 @@ from core.auth.cookies import (
 )
 from core.auth.serializers import LoginSerializer
 from core.auth.services import AuthService, SessionService
+from core.shared.client_ip import get_client_ip
 from core.shared.docs import (
     CsrfFailureExample,
     CsrfForbiddenSerializer,
@@ -97,7 +98,7 @@ class LoginView(APIView):
             email=serializer.validated_data.get("email"),
             password=serializer.validated_data.get("password"),
             user_agent_string=request.META.get("HTTP_USER_AGENT", ""),
-            ip_address=request.META.get("REMOTE_ADDR"),
+            ip_address=get_client_ip(request),
             raw_access_token=request.COOKIES.get(get_auth_cookie_name()),
         )
 

@@ -10,6 +10,7 @@ from core.registration.serializers import (
     RegistrationVerifySerializer,
 )
 from core.registration.services import RegistrationService
+from core.shared.client_ip import get_client_ip
 from core.shared.docs import (
     CodeIsValidSerializer,
     InvalidCodeExample,
@@ -63,7 +64,7 @@ class RegistrationRequestView(APIView):
 
         RegistrationService.request_registration(
             email=serializer.validated_data["email"],
-            ip_address=request.META.get("REMOTE_ADDR"),
+            ip_address=get_client_ip(request),
         )
         return Response({"detail": MSG_CODE_SENT}, status.HTTP_201_CREATED)
 
