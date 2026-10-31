@@ -3,7 +3,7 @@ import secrets
 from django.db import transaction
 from rest_framework import serializers
 
-from core.auth.rate_limit import limit_code_requests
+from core.auth.rate_limit import limit_code_requests, require_current_password
 from core.auth.services import SessionService
 from core.models.email_change import EmailChange
 from core.models.user import User
@@ -12,15 +12,15 @@ from core.shared.exceptions import ServiceUnavailable
 from core.shared.response_messages import (
     MSG_CODE_INVALID,
     MSG_EMAIL_IN_USE,
-    MSG_INVALID_PASSWORD,
 )
 
 
 class EmailChangeService:
     @staticmethod
     def request_change(
-        user: User, new_email: str, ip_address: str | None = None
+        user: User, new_email: str, current_password: str, ip_address: str | None = None
     ) -> None:
+        require_current_password(user, current_password)
         limit_code_requests("email-change", new_email, ip_address)
         if User.objects.filter(email=new_email).exists():
             raise serializers.ValidationError(
@@ -58,8 +58,7 @@ class EmailChangeService:
 
     @staticmethod
     def confirm_change(user: User, code: str, current_password: str) -> None:
-        if not user.check_password(current_password):
-            raise serializers.ValidationError({"password": MSG_INVALID_PASSWORD})
+        require_current_password(user, current_password)
 
         with transaction.atomic():
             change_code = (

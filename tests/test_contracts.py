@@ -77,6 +77,24 @@ class ContractTests(ApiCase):
         self.assertEqual(response.data["count"], 2)
         self.assertEqual(len(response.data["results"]), 2)
 
+    def test_reauthentication_contract_is_documented(self):
+        schema = self.client.get("/api/docs/schema/?format=json").json()
+        for path in ("/api/email-change/request/", "/api/me/deactivate/"):
+            operation = schema["paths"][path]["post"]
+            self.assertIn("429", operation["responses"])
+            self.assertIn("503", operation["responses"])
+            component = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
+            self.assertIn("password", schema["components"]["schemas"][component]["required"])
+
+    def test_other_session_deletion_does_not_require_password(self):
+        user = self.create_user()
+        self.login(user)
+        other = self.new_client()
+        self.login(user, client=other, ip="127.0.0.2")
+        sessions = self.client.get("/api/sessions/").data
+        target = next(session["id"] for session in sessions if not session["current"])
+        self.assertEqual(self.client.delete(f"/api/sessions/{target}/").status_code, 200)
+
     def test_atomic_requests_is_disabled(self):
         self.assertFalse(connections["default"].settings_dict["ATOMIC_REQUESTS"])
 

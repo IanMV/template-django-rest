@@ -2,9 +2,11 @@ import hashlib
 import logging
 
 from django.core.cache import cache
+from rest_framework import serializers
 from rest_framework.exceptions import Throttled
 
 from core.shared.exceptions import ServiceUnavailable
+from core.shared.response_messages import MSG_INVALID_PASSWORD
 
 logger = logging.getLogger(__name__)
 
@@ -88,3 +90,30 @@ def reset_login_attempts(email: str, ip_address: str | None) -> None:
         cache.delete(login_pair_key(email, ip_address or "unknown"))
     except Exception:
         logger.exception("Login throttle reset unavailable; continuing")
+
+
+def require_current_password(user, password: str) -> None:
+    user_digest = hashlib.sha256(str(user.pk).encode()).hexdigest()
+    key = f"reauth:user:{user_digest}"
+    try:
+        attempts = cache.get(key, 0)
+    except Exception as exc:
+        logger.exception("Reauthentication throttle unavailable")
+        raise ServiceUnavailable() from exc
+    if attempts >= 5:
+        raise Throttled(wait=300)
+
+    valid = user.check_password(password)
+    try:
+        if valid:
+            cache.delete(key)
+        elif not cache.add(key, 1, timeout=300):
+            try:
+                cache.incr(key)
+            except ValueError:
+                cache.add(key, 1, timeout=300)
+    except Exception as exc:
+        logger.exception("Reauthentication throttle unavailable")
+        raise ServiceUnavailable() from exc
+    if not valid:
+        raise serializers.ValidationError({"password": MSG_INVALID_PASSWORD})

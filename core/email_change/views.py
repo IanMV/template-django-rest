@@ -18,9 +18,11 @@ from core.shared.docs import (
     CsrfFailureExample,
     CsrfForbiddenSerializer,
     InvalidCodeExample,
+    InvalidPasswordExample,
     NewEmailChangedSerializer,
     NotAuthenticatedSerializer,
     RateLimitedExample,
+    ReauthRateLimitedExample,
     RequestSentSerializer,
     ServiceUnavailableSerializer,
     ThrottledSerializer,
@@ -39,11 +41,13 @@ class EmailChangeRequestView(APIView):
     @extend_schema(
         tags=["email-change"],
         summary="Request an email change code",
-        description="Step 1 of 3: while authenticated, submit the new email address. A six-digit code is sent to the new address; send X-CSRFTOKEN.",
+        description="Step 1 of 3: while authenticated, submit the new email address and current password. A six-digit code is sent to the new address; send X-CSRFTOKEN.",
         request=EmailChangeRequestSerializer,
         examples=[
             OpenApiExample(
-                "New email", value={"new_email": "new@example.com"}, request_only=True
+                "New email",
+                value={"new_email": "new@example.com", "password": "current-password"},
+                request_only=True,
             ),
             OpenApiExample(
                 "Email already in use",
@@ -53,6 +57,8 @@ class EmailChangeRequestView(APIView):
             ),
             CsrfFailureExample,
             RateLimitedExample,
+            InvalidPasswordExample,
+            ReauthRateLimitedExample,
         ],
         responses={
             200: RequestSentSerializer,
@@ -70,6 +76,7 @@ class EmailChangeRequestView(APIView):
         EmailChangeService.request_change(
             user=request.user,
             new_email=serializer.validated_data["new_email"],
+            current_password=serializer.validated_data["password"],
             ip_address=get_client_ip(request),
         )
         return Response({"detail": MSG_CODE_SENT}, status=status.HTTP_200_OK)
@@ -126,8 +133,10 @@ class EmailChangeConfirmView(APIView):
                 request_only=True,
             ),
             InvalidCodeExample,
+            InvalidPasswordExample,
             CsrfFailureExample,
             RateLimitedExample,
+            ReauthRateLimitedExample,
         ],
         responses={
             200: NewEmailChangedSerializer,

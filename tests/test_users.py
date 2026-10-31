@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+from django.core.cache import cache
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from core.models.user import User, UserSession
@@ -5,6 +8,64 @@ from tests.base import ApiCase
 
 
 class UserTests(ApiCase):
+    def test_deactivation_requires_correct_password_without_side_effects(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        missing = self.client.post("/api/me/deactivate/", {}, format="json")
+        wrong = self.client.post(
+            "/api/me/deactivate/", {"password": "wrong"}, format="json"
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertIn("password", missing.data)
+        self.assertEqual(wrong.status_code, 400)
+        self.assertEqual(str(wrong.data["password"]), "Invalid current password.")
+        user.refresh_from_db()
+        session.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertTrue(session.is_active)
+
+    def test_deactivation_reauth_throttle_and_cache_failure(self):
+        user = self.create_user()
+        self.login(user)
+        for _ in range(5):
+            response = self.client.post(
+                "/api/me/deactivate/", {"password": "wrong"}, format="json"
+            )
+            self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            self.client.post(
+                "/api/me/deactivate/", {"password": self.password}, format="json"
+            ).status_code,
+            429,
+        )
+        cache.clear()
+        with patch("core.auth.rate_limit.cache.get", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    "/api/me/deactivate/",
+                    {"password": self.password},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 503)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+    def test_deactivation_reauth_cache_reset_failure_fails_closed(self):
+        user = self.create_user()
+        self.login(user)
+        with patch("core.auth.rate_limit.cache.delete", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    "/api/me/deactivate/",
+                    {"password": self.password},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 503)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertTrue(UserSession.objects.get(user=user).is_active)
+
     def test_profile_returns_current_user(self):
         user = self.create_user()
         self.login(user)
@@ -52,7 +113,9 @@ class UserTests(ApiCase):
         self.login(user)
         other = self.new_client()
         self.login(user, client=other, ip="127.0.0.2")
-        response = self.client.post("/api/me/deactivate/")
+        response = self.client.post(
+            "/api/me/deactivate/", {"password": self.password}, format="json"
+        )
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertFalse(user.is_active)

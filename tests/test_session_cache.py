@@ -62,12 +62,17 @@ class SessionCacheTests(ApiCase):
         self.assertEqual(
             self.client.post(
                 "/api/email-change/request/",
-                {"new_email": "new@example.com"},
+                {"new_email": "new@example.com", "password": self.password},
                 format="json",
             ).status_code,
             401,
         )
-        self.assertEqual(self.client.post("/api/me/deactivate/").status_code, 401)
+        self.assertEqual(
+            self.client.post(
+                "/api/me/deactivate/", {"password": self.password}, format="json"
+            ).status_code,
+            401,
+        )
         self.assertEqual(self.client.delete("/api/sessions/999999/").status_code, 401)
         user.refresh_from_db()
         self.assertTrue(user.is_active)
@@ -176,7 +181,12 @@ class SessionCacheTests(ApiCase):
         self.client.get("/api/users/me/")
         del self.client.cookies["refresh_token"]
         with self.captureOnCommitCallbacks(execute=True):
-            self.assertEqual(self.client.post("/api/me/deactivate/").status_code, 200)
+            self.assertEqual(
+                self.client.post(
+                    "/api/me/deactivate/", {"password": self.password}, format="json"
+                ).status_code,
+                200,
+            )
         self.assertIsNone(caches["sessions"].get(f"session:{session.pk}"))
 
     def test_password_reset_invalidates_cached_session(self):
@@ -210,7 +220,8 @@ class SessionCacheTests(ApiCase):
         del self.client.cookies["refresh_token"]
         self.assertEqual(
             self.post_with_commit(
-                "/api/email-change/request/", {"new_email": "new@example.com"}
+                "/api/email-change/request/",
+                {"new_email": "new@example.com", "password": self.password},
             ).status_code,
             200,
         )

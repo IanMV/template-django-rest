@@ -17,7 +17,8 @@ class EmailChangeTests(ApiCase):
 
     def request_code(self):
         response = self.post_with_commit(
-            self.base_url + "request/", {"new_email": self.new_email}
+            self.base_url + "request/",
+            {"new_email": self.new_email, "password": self.password},
         )
         self.assertEqual(response.status_code, 200, response.data)
         return self.email_code()
@@ -28,6 +29,121 @@ class EmailChangeTests(ApiCase):
         code = self.request_code()
         self.assertEqual(mail.outbox[-1].to, [self.new_email])
         self.assertNotEqual(EmailChange.objects.get(user=user).code, code)
+
+    def test_request_requires_correct_current_password_without_issuing_code(self):
+        user = self.create_user()
+        self.login(user)
+        path = self.base_url + "request/"
+        missing = self.client.post(
+            path, {"new_email": self.new_email}, format="json"
+        )
+        wrong = self.client.post(
+            path,
+            {"new_email": self.new_email, "password": "wrong"},
+            format="json",
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertIn("password", missing.data)
+        self.assertEqual(wrong.status_code, 400)
+        self.assertEqual(str(wrong.data["password"]), "Invalid current password.")
+        self.assertFalse(EmailChange.objects.filter(user=user).exists())
+        self.assertFalse(mail.outbox)
+
+    def test_failed_reauthentication_is_limited_per_user(self):
+        user = self.create_user()
+        self.login(user)
+        for _ in range(5):
+            response = self.client.post(
+                self.base_url + "request/",
+                {"new_email": self.new_email, "password": "wrong"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400)
+        blocked = self.client.post(
+            self.base_url + "request/",
+            {"new_email": self.new_email, "password": self.password},
+            format="json",
+            REMOTE_ADDR="127.0.0.2",
+        )
+        self.assertEqual(blocked.status_code, 429)
+        self.assertFalse(EmailChange.objects.filter(user=user).exists())
+
+    def test_reauthentication_cache_failure_fails_closed(self):
+        user = self.create_user()
+        self.login(user)
+        with patch("core.auth.rate_limit.cache.get", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    self.base_url + "request/",
+                    {"new_email": self.new_email, "password": self.password},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(EmailChange.objects.filter(user=user).exists())
+
+    def test_reauthentication_cache_write_failure_fails_closed(self):
+        user = self.create_user()
+        self.login(user)
+        with patch("core.auth.rate_limit.cache.add", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                response = self.client.post(
+                    self.base_url + "request/",
+                    {"new_email": self.new_email, "password": "wrong"},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(EmailChange.objects.filter(user=user).exists())
+
+    def test_successful_reauthentication_resets_failed_attempts(self):
+        user = self.create_user()
+        self.login(user)
+        for _ in range(4):
+            self.assertEqual(
+                self.client.post(
+                    self.base_url + "request/",
+                    {"new_email": self.new_email, "password": "wrong"},
+                    format="json",
+                ).status_code,
+                400,
+            )
+        self.request_code()
+        for _ in range(5):
+            self.assertEqual(
+                self.client.post(
+                    self.base_url + "request/",
+                    {"new_email": self.new_email, "password": "wrong"},
+                    format="json",
+                ).status_code,
+                400,
+            )
+        self.assertEqual(
+            self.client.post(
+                self.base_url + "request/",
+                {"new_email": self.new_email, "password": "wrong"},
+                format="json",
+            ).status_code,
+            429,
+        )
+
+    def test_confirm_password_attempts_share_request_throttle(self):
+        user = self.create_user()
+        self.login(user)
+        code = self.request_code()
+        for _ in range(5):
+            response = self.client.post(
+                self.base_url + "confirm/",
+                {"code": code, "password": "wrong"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400)
+        blocked = self.client.post(
+            self.base_url + "request/",
+            {"new_email": "other@example.com", "password": self.password},
+            format="json",
+            REMOTE_ADDR="127.0.0.2",
+        )
+        self.assertEqual(blocked.status_code, 429)
+        self.assertEqual(EmailChange.objects.get(user=user).new_email, self.new_email)
 
     def test_confirm_changes_email_revokes_every_session_and_clears_cookies(self):
         user = self.create_user()
@@ -172,7 +288,7 @@ class EmailChangeDeliveryFailureTests(ApiTransactionCase):
         ):
             response = self.client.post(
                 "/api/email-change/request/",
-                {"new_email": "new@example.com"},
+                {"new_email": "new@example.com", "password": self.password},
                 format="json",
             )
         self.assertEqual(response.status_code, 503)
@@ -186,7 +302,7 @@ class EmailChangeAttemptPersistenceTests(ApiTransactionCase):
         self.assertEqual(
             self.client.post(
                 "/api/email-change/request/",
-                {"new_email": "new@example.com"},
+                {"new_email": "new@example.com", "password": self.password},
                 format="json",
             ).status_code,
             200,

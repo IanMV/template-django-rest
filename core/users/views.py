@@ -11,15 +11,20 @@ from core.shared.docs import (
     CsrfFailureExample,
     CsrfForbiddenSerializer,
     ForbiddenSerializer,
+    InvalidPasswordExample,
     NotAuthenticatedSerializer,
+    ReauthRateLimitedExample,
+    ServiceUnavailableSerializer,
+    ThrottledSerializer,
     UserDeactivatedSerializer,
     UserRevokedAllSessionsSerializer,
+    ValidationErrorResponse,
 )
 from core.shared.response_messages import (
     MSG_USER_DEACTIVATED,
     MSG_USER_REVOKED_ALL_SESSIONS,
 )
-from core.users.serializers import UserListRetrieveSerializer
+from core.users.serializers import DeactivateSelfSerializer, UserListRetrieveSerializer
 from core.users.services import UserService
 
 
@@ -100,17 +105,22 @@ class DeactivateSelfView(APIView):
     @extend_schema(
         tags=["user"],
         summary="Deactivate own user account",
-        description="Deactivates the authenticated user's account, revoking all active sessions and preventing subsequent authentication attempts.",
-        request=None,
-        examples=[CsrfFailureExample],
+        description="Requires the current password. Deactivates the authenticated account and revokes all active sessions.",
+        request=DeactivateSelfSerializer,
+        examples=[InvalidPasswordExample, CsrfFailureExample, ReauthRateLimitedExample],
         responses={
             200: UserDeactivatedSerializer,
+            400: ValidationErrorResponse,
             401: NotAuthenticatedSerializer,
             403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
         },
     )
     def post(self, request):
-        UserService.deactivate_user(request.user)
+        serializer = DeactivateSelfSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        UserService.deactivate_user(request.user, serializer.validated_data["password"])
         response = Response({"detail": MSG_USER_DEACTIVATED}, status.HTTP_200_OK)
         clear_auth_cookies(response)
         return response

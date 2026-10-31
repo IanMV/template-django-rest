@@ -14,6 +14,7 @@ from core.shared.response_messages import (
     MSG_EMAIL_CHANGED,
     MSG_EMAIL_IN_USE,
     MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
+    MSG_INVALID_PASSWORD,
     MSG_LOGIN_SUCCESSFUL,
     MSG_LOGOUT_SUCCESSFUL,
     MSG_NO_REFRESH_TOKEN_PROVIDED,
@@ -223,6 +224,20 @@ CsrfFailureExample = OpenApiExample(
 RateLimitedExample = OpenApiExample(
     "Too many requests",
     value={"detail": "Request was throttled. Expected available in 60 seconds."},
+    response_only=True,
+    status_codes=["429"],
+)
+
+InvalidPasswordExample = OpenApiExample(
+    "Invalid current password",
+    value={"password": str(MSG_INVALID_PASSWORD)},
+    response_only=True,
+    status_codes=["400"],
+)
+
+ReauthRateLimitedExample = OpenApiExample(
+    "Reauthentication throttled",
+    value={"detail": "Request was throttled. Expected available in 300 seconds."},
     response_only=True,
     status_codes=["429"],
 )
