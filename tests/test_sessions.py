@@ -7,6 +7,38 @@ from tests.base import ApiCase
 
 
 class SessionTests(ApiCase):
+    def test_logout_revocation_rolls_back_on_failure(self):
+        user = self.create_user()
+        self.login(user)
+        token = AccessToken(self.client.cookies["access_token"].value)
+        session = UserSession.objects.get(user=user)
+        self.client.get("/api/users/me/")
+        key = f"session:{session.pk}"
+        binding = caches["sessions"].get(key)
+        with patch(
+            "core.auth.services.invalidate_sessions",
+            side_effect=RuntimeError("Invalidation failed"),
+        ):
+            with self.assertRaisesMessage(RuntimeError, "Invalidation failed"):
+                SessionService.logout_user(user, token)
+        session.refresh_from_db()
+        self.assertTrue(session.is_active)
+        self.assertFalse(
+            BlacklistedToken.objects.filter(token__jti=session.refresh_jti).exists()
+        )
+        self.assertEqual(caches["sessions"].get(key), binding)
+
+    def test_logout_handles_repeated_revocation_and_deleted_session(self):
+        user = self.create_user()
+        self.login(user)
+        token = AccessToken(self.client.cookies["access_token"].value)
+        SessionService.logout_user(user, token)
+        SessionService.logout_user(user, token)
+        self.assertFalse(UserSession.objects.get(user=user).is_active)
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 1)
+        UserSession.objects.filter(user=user).delete()
+        SessionService.logout_user(user, token)
+
     def test_logout_revokes_current_session_and_deletes_cookies(self):
         user = self.create_user()
         self.login(user)
@@ -137,3 +169,8 @@ class SessionTests(ApiCase):
         self.assertEqual(response.cookies["access_token"]["max-age"], 0)
         self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
         self.assertEqual(other.get("/api/users/me/").status_code, 401)
+
+
+from unittest.mock import patch
+
+from django.core.cache import caches

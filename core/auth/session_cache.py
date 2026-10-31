@@ -42,6 +42,8 @@ def session_is_active(token, *, use_cache=True):
                 )
             except Exception:
                 logger.exception("Session cache write failed; using database result")
+    if session_id is None:
+        token["session_id"] = session.pk
     return True
 
 

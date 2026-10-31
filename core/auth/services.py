@@ -171,7 +171,10 @@ class SessionService:
 
     @staticmethod
     def logout_user(user, token):
-        SessionService.deactivate_session_by_access_jti(user, str(token["jti"]))
+        try:
+            SessionService.deactivate_session(user, token.get("session_id"))
+        except UserSession.DoesNotExist:
+            pass
 
     @staticmethod
     def deactivate_other_session(user, session_id, token):
@@ -222,27 +225,6 @@ class SessionService:
             session.is_active = False
             session.save(update_fields=["is_active"])
             invalidate_sessions([session.pk])
-
-    @staticmethod
-    def deactivate_session_by_access_jti(user, access_jti):
-        with transaction.atomic():
-            User.objects.select_for_update(no_key=True).get(pk=user.pk)
-            session = (
-                UserSession.objects.select_for_update()
-                .filter(access_jti=access_jti, user=user)
-                .first()
-            )
-            if session:
-                if session.refresh_jti:
-                    outstanding_token = OutstandingToken.objects.filter(
-                        jti=session.refresh_jti
-                    ).first()
-                    if outstanding_token:
-                        BlacklistedToken.objects.get_or_create(token=outstanding_token)
-
-                session.is_active = False
-                session.save(update_fields=["is_active"])
-                invalidate_sessions([session.pk])
 
     @staticmethod
     def revoke_all_sessions(user):

@@ -6,7 +6,7 @@ from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import authenticate
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.db import connection, connections
 from django.utils import timezone
 from rest_framework import serializers
@@ -25,6 +25,72 @@ from tests.base import ApiTransactionCase
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL/Redis settings")
 class ProductionConcurrencyTests(ApiTransactionCase):
+    def test_logout_and_refresh_revoke_session_in_both_orders(self):
+        from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        for legacy in (False, True):
+            for refresh_first in (False, True):
+                with self.subTest(legacy=legacy, refresh_first=refresh_first):
+                    user = self.create_user(
+                        email=f"logout-{legacy}-{refresh_first}@example.com"
+                    )
+                    self.login(user)
+                    token = AccessToken(self.client.cookies["access_token"].value)
+                    if legacy:
+                        del token["session_id"]
+                        self.client.cookies["access_token"] = str(token)
+                    self.assertEqual(self.client.get("/api/users/me/").status_code, 200)
+                    raw = self.client.cookies["refresh_token"].value
+                    session = UserSession.objects.get(user=user)
+                    logout = SessionService.logout_user
+                    refresh_results = []
+
+                    def refresh():
+                        try:
+                            data = SessionService.refresh_tokens(
+                                raw, TokenRefreshSerializer
+                            )
+                            refresh_results.append(data)
+                            return 200
+                        except AuthenticationFailed:
+                            return 401
+                        finally:
+                            connections.close_all()
+
+                    def ordered_logout(owner, validated):
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            if refresh_first:
+                                self.assertEqual(
+                                    executor.submit(refresh).result(timeout=20), 200
+                                )
+                                logout(owner, validated)
+                            else:
+                                logout(owner, validated)
+                                self.assertEqual(
+                                    executor.submit(refresh).result(timeout=20), 401
+                                )
+
+                    with patch.object(
+                        SessionService, "logout_user", side_effect=ordered_logout
+                    ):
+                        response = self.client.post("/api/me/logout/")
+                    self.assertEqual(response.status_code, 200)
+                    session.refresh_from_db()
+                    self.assertFalse(session.is_active)
+                    self.assertTrue(
+                        BlacklistedToken.objects.filter(
+                            token__jti=session.refresh_jti
+                        ).exists()
+                    )
+                    self.assertIsNone(caches["sessions"].get(f"session:{session.pk}"))
+                    for data in refresh_results:
+                        with self.assertRaises(AuthenticationFailed):
+                            SessionService.refresh_tokens(
+                                data["refresh"], TokenRefreshSerializer
+                            )
+
     def concurrent(self, operation, count=2):
         def worker():
             try:
