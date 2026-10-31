@@ -65,12 +65,13 @@ class SessionService:
                     raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
                 new_refresh = RefreshToken(response_data["refresh"])
                 new_refresh["session_id"] = session.pk
-                access = str(new_refresh.access_token)
+                new_access = new_refresh.access_token
+                access = str(new_access)
                 refresh = str(new_refresh)
                 if not SessionService.update_session_jtis(
                     old_refresh_jti=old_jti,
-                    new_access_jti=str(AccessToken(access).get("jti", "")),
-                    new_refresh_jti=str(RefreshToken(refresh).get("jti", "")),
+                    new_access_jti=str(new_access["jti"]),
+                    new_refresh_jti=str(new_refresh["jti"]),
                 ):
                     raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
                 invalidate_sessions([session.pk])
@@ -106,43 +107,27 @@ class SessionService:
                 SessionService.deactivate_session(session.user, session.pk)
 
     @staticmethod
-    def logout_user(user, raw_access_token):
-        if raw_access_token:
-            try:
-                jti = str(AccessToken(raw_access_token).get("jti", ""))
-                SessionService.deactivate_session_by_access_jti(user, jti)
-            except TokenError:
-                pass
+    def logout_user(user, token):
+        SessionService.deactivate_session_by_access_jti(user, str(token["jti"]))
 
     @staticmethod
-    def deactivate_other_session(user, session_id, raw_access_token):
-        if raw_access_token:
-            try:
-                current_jti = str(AccessToken(raw_access_token).get("jti", ""))
-                current_session = UserSession.objects.filter(
-                    access_jti=current_jti, user=user
-                ).first()
-                if current_session and current_session.id == session_id:
-                    raise ValidationError(
-                        {"detail": MSG_CANNOT_DEACTIVATE_CURRENT_SESSION}
-                    )
-            except TokenError:
-                pass
+    def deactivate_other_session(user, session_id, token):
+        current_id = token.get("session_id")
+        if current_id is None:
+            current_id = UserSession.objects.filter(
+                access_jti=str(token["jti"]), user=user
+            ).values_list("pk", flat=True).first()
+        if current_id == session_id:
+            raise ValidationError({"detail": MSG_CANNOT_DEACTIVATE_CURRENT_SESSION})
         try:
             SessionService.deactivate_session(user, session_id)
         except UserSession.DoesNotExist as exc:
             raise NotFound(MSG_USER_SESSION_NOT_FOUND) from exc
 
     @staticmethod
-    def get_active_sessions_with_current(user, raw_access_token):
+    def get_active_sessions_with_current(user, token):
         sessions = UserSession.objects.filter(user=user, is_active=True)
-        current_access_jti = None
-
-        if raw_access_token:
-            try:
-                current_access_jti = str(AccessToken(raw_access_token).get("jti", ""))
-            except TokenError:
-                pass
+        current_access_jti = str(token["jti"])
 
         for session in sessions:
             session.current = bool(

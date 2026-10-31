@@ -33,41 +33,10 @@ class CustomAuthentication(JWTAuthentication):
     )
 
     def authenticate(self, request):
-
-        # ===========================================================
-        # Permite que a autenticação seja consumida de várias formas.
-        # Esse trecho comentado tenta buscar o cookie no cabeçalho: 'Authorization: Bearer <token>'.
-        # Se ele não encontra, pega dos cookies enviados pela requisição.
-        # ===========================================================
-        # header = self.get_header(request)
-        # if header is None:
-        #     cookie_name = settings.SIMPLE_JWT.get("AUTH_COOKIE", "access_token")
-        #     raw_token = request.COOKIES.get(cookie_name)
-        #     if raw_token:
-        #         is_cookie_auth = True
-        #     else:
-        #         raw_token = None
-        # else:
-        #     raw_token = self.get_raw_token(header)
-        # if raw_token is None:
-        #     return None
-
-        is_cookie_auth = False
         cookie_name = settings.SIMPLE_JWT.get("AUTH_COOKIE", "access_token")
         raw_token = request.COOKIES.get(cookie_name)
-        if raw_token:
-            is_cookie_auth = True
-        else:
-            raw_token = None
-
-        # =======================================================
-        # Retorna None e indica para o DRF que o usuário é anônimo.
-        # É mais um fallback para caso tenha esquecido de declarar 'authentication_classes = []',
-        # nas classes das views públicas como a classe da view de login.
-
-        if raw_token is None:
+        if not raw_token:
             return None
-        # =======================================================
 
         validated_token = self.get_validated_token(raw_token)
         match = request.resolver_match
@@ -76,7 +45,7 @@ class CustomAuthentication(JWTAuthentication):
             use_cache=not (match and match.url_name in self.db_only_routes),
         ):
             raise exceptions.AuthenticationFailed()
-        if is_cookie_auth and request.method not in (
+        if request.method not in (
             "GET",
             "HEAD",
             "OPTIONS",

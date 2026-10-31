@@ -35,6 +35,16 @@ class AuthenticationTests(ApiCase):
             self.assertIn(name, response.cookies)
             self.assertTrue(response.cookies[name]["httponly"])
             self.assertEqual(response.cookies[name]["samesite"], "Lax")
+        self.assertEqual(response.cookies["access_token"]["path"], "/")
+        self.assertEqual(response.cookies["refresh_token"]["path"], "/api/refresh/")
+        self.assertEqual(
+            int(response.cookies["access_token"]["max-age"]),
+            int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
+        )
+        self.assertEqual(
+            int(response.cookies["refresh_token"]["max-age"]),
+            int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        )
 
     def test_login_rejects_invalid_credentials(self):
         user = self.create_user()

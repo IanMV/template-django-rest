@@ -193,7 +193,7 @@ class LogoutView(APIView):
     )
     def post(self, request):
         SessionService.logout_user(
-            request.user, request.COOKIES.get(get_auth_cookie_name())
+            request.user, request.auth
         )
         response = Response({"detail": MSG_LOGOUT_SUCCESSFUL}, status.HTTP_200_OK)
         clear_auth_cookies(response)

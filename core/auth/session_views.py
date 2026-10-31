@@ -4,7 +4,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.auth.cookies import get_auth_cookie_name
 from core.auth.serializers import UserSessionSerializer
 from core.auth.services import SessionService
 from core.shared.docs import (
@@ -46,7 +45,7 @@ class UserSessionsDeactivateView(APIView):
     )
     def delete(self, request, session_id):
         SessionService.deactivate_other_session(
-            request.user, session_id, request.COOKIES.get(get_auth_cookie_name())
+            request.user, session_id, request.auth
         )
         return Response({"detail": MSG_USER_SESSION_DEACTIVATED}, status.HTTP_200_OK)
 
@@ -65,9 +64,8 @@ class UserSessionsGetView(APIView):
         },
     )
     def get(self, request):
-        raw_access_token = request.COOKIES.get(get_auth_cookie_name())
         sessions = SessionService.get_active_sessions_with_current(
-            request.user, raw_access_token
+            request.user, request.auth
         )
         serializer = UserSessionSerializer(sessions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

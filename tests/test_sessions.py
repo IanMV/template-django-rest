@@ -1,4 +1,5 @@
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+from rest_framework_simplejwt.tokens import AccessToken
 
 from core.models.user import UserSession
 from tests.base import ApiCase
@@ -65,6 +66,22 @@ class SessionTests(ApiCase):
         session = UserSession.objects.get(user=user)
         response = self.client.delete(f"/api/sessions/{session.pk}/")
         self.assertEqual(response.status_code, 400)
+        session.refresh_from_db()
+        self.assertTrue(session.is_active)
+
+    def test_legacy_access_token_marks_current_and_cannot_delete_it(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        token = AccessToken(self.client.cookies["access_token"].value)
+        del token["session_id"]
+        self.client.cookies["access_token"] = str(token)
+        listed = self.client.get("/api/sessions/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertTrue(listed.data[0]["current"])
+        self.assertEqual(
+            self.client.delete(f"/api/sessions/{session.pk}/").status_code, 400
+        )
         session.refresh_from_db()
         self.assertTrue(session.is_active)
 
