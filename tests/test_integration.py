@@ -15,7 +15,8 @@ from rest_framework.exceptions import AuthenticationFailed, Throttled
 from core.auth.rate_limit import require_current_password
 from core.auth.services import AuthService, SessionService
 from core.email_change.services import EmailChangeService
-from core.models import EmailChange, EmailVerification, User, UserSession
+from core.models import EmailChange, EmailVerification, PasswordReset, User, UserSession
+from core.password_reset.services import PasswordResetService
 from core.registration.services import RegistrationService
 from core.registration.tasks import daily_maintenance_purge_task
 from core.users.services import UserService
@@ -233,3 +234,37 @@ class ProductionConcurrencyTests(ApiTransactionCase):
                 self.assertGreater(
                     EmailVerification.objects.get(user=user).expires_at, timezone.now()
                 )
+
+    def test_reset_issuance_cannot_leave_old_email_code_after_change(self):
+        user = self.create_user()
+        EmailChangeService.request_change(user, "new@example.com", self.password)
+        code = self.email_code()
+        selected, finished = Event(), Event()
+        lock_users = User.objects.select_for_update
+
+        def lock_after_change(*args, **kwargs):
+            if not selected.is_set():
+                selected.set()
+                if not finished.wait(timeout=10):
+                    raise TimeoutError("Email-change worker did not finish")
+            return lock_users(*args, **kwargs)
+
+        def change_email():
+            try:
+                if not selected.wait(timeout=10):
+                    raise TimeoutError("Reset did not reach user lock")
+                EmailChangeService.confirm_change(user, code, self.password)
+            finally:
+                connections.close_all()
+                finished.set()
+
+        with patch.object(
+            User.objects, "select_for_update", side_effect=lock_after_change
+        ):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(change_email)
+                PasswordResetService.request_reset(user.email)
+                future.result(timeout=20)
+        user.refresh_from_db()
+        self.assertEqual(user.email, "new@example.com")
+        self.assertFalse(PasswordReset.objects.filter(user=user).exists())

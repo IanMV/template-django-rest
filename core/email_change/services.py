@@ -7,6 +7,7 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from core.auth.rate_limit import limit_code_requests, require_current_password
 from core.auth.services import SessionService, require_unchanged_user
+from core.models import PasswordReset
 from core.models.email_change import EmailChange
 from core.models.user import User
 from core.shared.email_token_sender import send_email_token
@@ -97,6 +98,7 @@ class EmailChangeService:
                         {"new_email": MSG_EMAIL_IN_USE}
                     )
                 change_code.mark_used()
+                PasswordReset.objects.filter(user=user).delete()
                 SessionService.revoke_all_sessions(user)
         if not valid:
             raise serializers.ValidationError({"code": MSG_CODE_INVALID})

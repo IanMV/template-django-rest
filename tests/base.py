@@ -1,11 +1,12 @@
 import re
 
 from django.core import mail
-from django.core.cache import cache, caches
+from django.core.cache import caches
 from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework.test import APIClient
 
 from core.models.user import User
+from tests.redis_cache import TestRedisCache
 
 
 class BehaviorHelpers:
@@ -13,7 +14,11 @@ class BehaviorHelpers:
 
     def setUp(self):
         super().setUp()
-        cache.clear()
+        default_cache = caches["default"]
+        if isinstance(default_cache, TestRedisCache):
+            default_cache.clear_rate_limits()
+        else:
+            default_cache.clear()
         caches["sessions"].clear()
         mail.outbox.clear()
         self.client = self.new_client()
@@ -55,11 +60,11 @@ class BehaviorHelpers:
         self.assertIsNotNone(code)
         return code.group()
 
-    def post_with_commit(self, path, data):
+    def post_with_commit(self, path, data, **extra):
         if isinstance(self, TestCase):
             with self.captureOnCommitCallbacks(execute=True):
-                return self.client.post(path, data, format="json")
-        return self.client.post(path, data, format="json")
+                return self.client.post(path, data, format="json", **extra)
+        return self.client.post(path, data, format="json", **extra)
 
 
 @override_settings(
