@@ -83,6 +83,7 @@ class PasswordResetVerifyView(APIView):
                 request_only=True,
             ),
             InvalidCodeExample,
+            RateLimitedExample,
         ],
         responses={
             200: CodeIsValidSerializer,
@@ -124,6 +125,7 @@ class PasswordResetConfirmView(APIView):
                 request_only=True,
             ),
             InvalidCodeExample,
+            RateLimitedExample,
         ],
         responses={
             200: PasswordResetSerializer,

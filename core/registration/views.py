@@ -80,6 +80,7 @@ class RegistrationVerifyView(APIView):
                 request_only=True,
             ),
             InvalidCodeExample,
+            RateLimitedExample,
         ],
         responses={
             200: CodeIsValidSerializer,
@@ -121,6 +122,7 @@ class RegistrationConfirmView(APIView):
                 request_only=True,
             ),
             InvalidCodeExample,
+            RateLimitedExample,
         ],
         responses={
             200: UserCreatedSerializer,

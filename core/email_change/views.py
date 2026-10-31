@@ -89,6 +89,7 @@ class EmailChangeVerifyView(APIView):
             ),
             InvalidCodeExample,
             CsrfFailureExample,
+            RateLimitedExample,
         ],
         responses={
             200: CodeIsValidSerializer,
@@ -126,6 +127,7 @@ class EmailChangeConfirmView(APIView):
             ),
             InvalidCodeExample,
             CsrfFailureExample,
+            RateLimitedExample,
         ],
         responses={
             200: NewEmailChangedSerializer,
