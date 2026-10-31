@@ -17,11 +17,12 @@ def limit_code_requests(scope: str, email: str, ip_address: str | None) -> None:
 
 
 def limit_login_attempts(email: str, ip_address: str | None) -> None:
-    email_digest = hashlib.sha256(email.strip().casefold().encode()).hexdigest()
-    keys = [(f"login:email:{email_digest}", 10)]
-    if ip_address:
-        ip_digest = hashlib.sha256(ip_address.encode()).hexdigest()
-        keys.append((f"login:ip:{ip_digest}", 30))
+    ip_address = ip_address or "unknown"
+    ip_digest = hashlib.sha256(ip_address.encode()).hexdigest()
+    keys = [
+        (f"login:ip:{ip_digest}", 30),
+        (login_pair_key(email, ip_address), 10),
+    ]
 
     for key, maximum in keys:
         if cache.add(key, 1, timeout=300):
@@ -33,3 +34,13 @@ def limit_login_attempts(email: str, ip_address: str | None) -> None:
             continue
         if attempts > maximum:
             raise Throttled(wait=300)
+
+
+def login_pair_key(email: str, ip_address: str) -> str:
+    email_digest = hashlib.sha256(email.strip().casefold().encode()).hexdigest()
+    pair_digest = hashlib.sha256(f"{ip_address}:{email_digest}".encode()).hexdigest()
+    return f"login:pair:{pair_digest}"
+
+
+def reset_login_attempts(email: str, ip_address: str | None) -> None:
+    cache.delete(login_pair_key(email, ip_address or "unknown"))

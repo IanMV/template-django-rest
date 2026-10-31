@@ -85,13 +85,28 @@ class LoginRateLimitTests(ApiCase):
             REMOTE_ADDR=ip,
         )
 
-    def test_eleventh_login_for_same_email_is_throttled(self):
+    def test_same_email_from_different_ips_does_not_lock_account(self):
         user = self.create_user()
         for attempt in range(10):
             self.assertEqual(
                 self.attempt(user.email, f"127.0.0.{attempt + 1}").status_code, 401
             )
-        self.assertEqual(self.attempt(user.email, "127.0.0.11").status_code, 429)
+        self.assertEqual(self.attempt(user.email, "127.0.0.11").status_code, 401)
+
+    def test_eleventh_login_for_same_ip_and_email_is_throttled(self):
+        user = self.create_user()
+        for _ in range(10):
+            self.assertEqual(self.attempt(user.email, "127.0.0.1").status_code, 401)
+        self.assertEqual(self.attempt(user.email, "127.0.0.1").status_code, 429)
+
+    def test_successful_login_resets_pair_limit(self):
+        user = self.create_user()
+        for _ in range(9):
+            self.assertEqual(self.attempt(user.email, "127.0.0.1").status_code, 401)
+        self.login(user)
+        for _ in range(10):
+            self.assertEqual(self.attempt(user.email, "127.0.0.1").status_code, 401)
+        self.assertEqual(self.attempt(user.email, "127.0.0.1").status_code, 429)
 
     def test_thirty_first_login_for_same_ip_is_throttled(self):
         for attempt in range(30):

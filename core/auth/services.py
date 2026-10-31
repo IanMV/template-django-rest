@@ -11,7 +11,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from user_agents import parse
 
-from core.auth.rate_limit import limit_login_attempts
+from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
 from core.models.user import UserSession
 from core.shared.response_messages import (
     MSG_CANNOT_DEACTIVATE_CURRENT_SESSION,
@@ -205,6 +205,8 @@ class AuthService:
             SessionService.deactivate_session(
                 previous_session.user, previous_session.pk
             )
+
+        reset_login_attempts(email, ip_address)
 
         return {
             "refresh": refresh_token,
