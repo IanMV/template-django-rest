@@ -1,3 +1,4 @@
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 
 from core.models.user import User
@@ -11,6 +12,8 @@ class UserListRetrieveSerializer(serializers.ModelSerializer):
 
 class DeactivateSelfSerializer(serializers.Serializer):
     password = serializers.CharField(
+        trim_whitespace=False,
+        validators=[RegexValidator(r"\S", message="This field may not be blank.")],
         write_only=True,
         required=True,
         style={"input_type": "password"},

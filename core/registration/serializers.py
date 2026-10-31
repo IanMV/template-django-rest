@@ -1,4 +1,5 @@
 from django.contrib.auth.password_validation import validate_password
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 
 from core.models.user import User
@@ -28,7 +29,11 @@ class RegistrationConfirmSerializer(serializers.Serializer):
     )
     name = serializers.CharField(required=True, max_length=255)
     password = serializers.CharField(
-        write_only=True, required=True, style={"input_type": "password"}
+        trim_whitespace=False,
+        validators=[RegexValidator(r"\S", message="This field may not be blank.")],
+        write_only=True,
+        required=True,
+        style={"input_type": "password"},
     )
 
     def validate(self, attrs):

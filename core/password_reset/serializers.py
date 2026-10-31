@@ -1,4 +1,5 @@
 from django.contrib.auth.password_validation import validate_password
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 
 
@@ -25,6 +26,8 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         help_text="Six-digit code sent to the account email.",
     )
     new_password = serializers.CharField(
+        trim_whitespace=False,
+        validators=[RegexValidator(r"\S", message="This field may not be blank.")],
         write_only=True,
         required=True,
         style={"input_type": "password"},
