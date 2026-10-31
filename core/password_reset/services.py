@@ -34,10 +34,14 @@ class PasswordResetService:
 
     @staticmethod
     def verify_code(email: str, code: str) -> bool:
-        user = User.objects.filter(email=email, is_active=True).first()
-        reset_code = PasswordReset.objects.filter(user=user).first() if user else None
-
-        if not reset_code or not reset_code.verify(code):
+        with transaction.atomic():
+            reset_code = (
+                PasswordReset.objects.select_for_update()
+                .filter(user__email=email, user__is_active=True)
+                .first()
+            )
+            valid = reset_code is not None and reset_code.verify(code)
+        if not valid:
             raise serializers.ValidationError({"code": MSG_CODE_INVALID})
 
         return True

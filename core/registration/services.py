@@ -40,12 +40,14 @@ class RegistrationService:
 
     @staticmethod
     def verify_code(email: str, code: str) -> bool:
-        user = User.objects.filter(email=email).first()
-        verification = (
-            EmailVerification.objects.filter(user=user).first() if user else None
-        )
-
-        if not verification or not verification.verify(code):
+        with transaction.atomic():
+            verification = (
+                EmailVerification.objects.select_for_update()
+                .filter(user__email=email)
+                .first()
+            )
+            valid = verification is not None and verification.verify(code)
+        if not valid:
             raise serializers.ValidationError({"code": MSG_CODE_INVALID})
         return True
 

@@ -40,8 +40,12 @@ class EmailChangeService:
 
     @staticmethod
     def verify_code(user: User, code: str) -> bool:
-        change_code = EmailChange.objects.filter(user=user).first()
-        if not change_code or not change_code.verify(code):
+        with transaction.atomic():
+            change_code = (
+                EmailChange.objects.select_for_update().filter(user=user).first()
+            )
+            valid = change_code is not None and change_code.verify(code)
+        if not valid:
             raise serializers.ValidationError({"code": MSG_CODE_INVALID})
         return True
 
