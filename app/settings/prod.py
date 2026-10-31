@@ -15,7 +15,12 @@ if retention is not None:
             raise ValueError
     except ValueError as exc:
         raise ImproperlyConfigured("AUDIT_RETENTION_DAYS must be a positive integer.") from exc
-NUM_PROXIES = int(os.getenv("NUM_PROXIES", "0"))
+try:
+    NUM_PROXIES = int(os.getenv("NUM_PROXIES", "0"))
+    if NUM_PROXIES < 0:
+        raise ValueError
+except ValueError as exc:
+    raise ImproperlyConfigured("NUM_PROXIES must be a nonnegative integer.") from exc
 SIMPLE_JWT = {**SIMPLE_JWT, "AUTH_COOKIE_SECURE": True}  # noqa: F405
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True

@@ -2,6 +2,7 @@ import importlib
 from contextlib import contextmanager
 from unittest.mock import patch
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
 
@@ -28,3 +29,12 @@ class ProductionSettingsTests(SimpleTestCase):
                 self.production_settings(NUM_PROXIES=count) as configured,
             ):
                 self.assertEqual(configured.NUM_PROXIES, int(count))
+
+    def test_proxy_count_rejects_negative_and_malformed_values(self):
+        for count in ("-1", "abc", "1.5", "", " "):
+            with self.subTest(count=count):
+                with self.assertRaisesMessage(
+                    ImproperlyConfigured, "NUM_PROXIES must be a nonnegative integer."
+                ):
+                    with self.production_settings(NUM_PROXIES=count):
+                        pass
