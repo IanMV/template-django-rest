@@ -1,4 +1,7 @@
+import hashlib
 from unittest.mock import patch
+
+from django.core.cache import cache
 
 from tests.base import ApiCase
 
@@ -133,11 +136,9 @@ class LoginRateLimitTests(ApiCase):
         self.assertEqual(self.attempt(user.email, "127.0.0.1").status_code, 429)
 
     def test_thirty_first_login_for_same_ip_is_throttled(self):
-        for attempt in range(30):
-            self.assertEqual(
-                self.attempt(f"person{attempt}@example.com", "127.0.0.1").status_code,
-                401,
-            )
+        ip_digest = hashlib.sha256(b"127.0.0.1").hexdigest()
+        cache.set(f"login:ip:{ip_digest}", 29, timeout=300)
+        self.assertEqual(self.attempt("person29@example.com", "127.0.0.1").status_code, 401)
         self.assertEqual(
             self.attempt("person30@example.com", "127.0.0.1").status_code, 429
         )

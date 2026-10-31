@@ -98,6 +98,21 @@ class ContractTests(ApiCase):
     def test_atomic_requests_is_disabled(self):
         self.assertFalse(connections["default"].settings_dict["ATOMIC_REQUESTS"])
 
+    def test_canonical_models_are_exported_from_package(self):
+        from core.models import (
+            EmailChange,
+            EmailVerification,
+            OneTimeCode,
+            PasswordReset,
+            UserSession,
+        )
+
+        self.assertEqual(UserSession._meta.app_label, "core")
+        self.assertEqual(EmailVerification._meta.app_label, "core")
+        self.assertTrue(OneTimeCode._meta.abstract)
+        self.assertEqual(PasswordReset._meta.app_label, "core")
+        self.assertEqual(EmailChange._meta.app_label, "core")
+
     def test_cookie_names_and_flags_match_public_contract(self):
         user = self.create_user()
         _, response = self.login(user)
