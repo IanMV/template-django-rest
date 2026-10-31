@@ -12,6 +12,7 @@ dependencies = [
   "python-dotenv>=1.2.2",
   "user-agents>=2.2.0",
   "djangorestframework-simplejwt>=5.5.1",
+  "redis<8,>=7.4",
 ]
 requires-python = ">=3.14"
 readme = "README.md"
@@ -19,9 +20,10 @@ license = { text = "MIT" }
 
 [dependency-groups]
 dev = [
-  "pre-commit>=4.6.2",
-  "pyright>=1.1.411",
-  "ruff>=0.16.2",
+    "pre-commit>=4.6.2",
+    "pyright>=1.1.411",
+    "ruff>=0.16.2",
+    "pip-audit>=2.10.1",
 ]
 lint = [
   "ruff>=0.16.2",
