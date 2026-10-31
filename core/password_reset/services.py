@@ -46,8 +46,8 @@ class PasswordResetService:
                         logger.error("Password reset code enqueue failed (%s)", type(exc).__name__)
 
                 transaction.on_commit(send)
-        except Exception:
-            logger.exception("Password reset code issuance failed")
+        except Exception as exc:
+            logger.error("Password reset code issuance failed (%s)", type(exc).__name__)
 
     @staticmethod
     def verify_code(email: str, code: str) -> bool:

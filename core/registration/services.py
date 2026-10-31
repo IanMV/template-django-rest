@@ -61,7 +61,7 @@ class RegistrationService:
 
                 transaction.on_commit(send)
         except Exception as exc:
-            logger.exception("Registration code issuance failed")
+            logger.error("Registration code issuance failed (%s)", type(exc).__name__)
             raise ServiceUnavailable() from exc
 
     @staticmethod

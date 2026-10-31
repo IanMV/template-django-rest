@@ -54,7 +54,7 @@ class EmailChangeService:
         except AuthenticationFailed:
             raise
         except Exception as exc:
-            logger.exception("Email change code issuance failed")
+            logger.error("Email change code issuance failed (%s)", type(exc).__name__)
             raise ServiceUnavailable() from exc
 
     @staticmethod
