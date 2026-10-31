@@ -32,7 +32,20 @@ class RegistrationService:
                 verification = EmailVerification(user=user)
                 verification.set_code(raw_code)
                 verification.save()
-                send_email_token(user.email, raw_code, "Verify your e-mail")
+                def send():
+                    try:
+                        send_email_token(user.email, raw_code, "Verify your e-mail")
+                    except Exception as exc:
+                        EmailVerification.objects.filter(pk=verification.pk).delete()
+                        if created:
+                            User.objects.filter(
+                                pk=user.pk,
+                                is_active=False,
+                                emailverification__isnull=True,
+                            ).delete()
+                        raise ServiceUnavailable() from exc
+
+                transaction.on_commit(send)
         except serializers.ValidationError:
             raise
         except Exception as exc:

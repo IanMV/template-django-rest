@@ -144,9 +144,7 @@ class SessionCacheTests(ApiCase):
         session = UserSession.objects.get(user=user)
         self.client.get("/api/users/me/")
         self.assertEqual(
-            self.client.post(
-                "/api/password-reset/request/", {"email": user.email}, format="json"
-            ).status_code,
+            self.post_with_commit("/api/password-reset/request/", {"email": user.email}).status_code,
             200,
         )
         with self.captureOnCommitCallbacks(execute=True):
@@ -168,10 +166,8 @@ class SessionCacheTests(ApiCase):
         session = UserSession.objects.get(user=user)
         self.client.get("/api/users/me/")
         self.assertEqual(
-            self.client.post(
-                "/api/email-change/request/",
-                {"new_email": "new@example.com"},
-                format="json",
+            self.post_with_commit(
+                "/api/email-change/request/", {"new_email": "new@example.com"}
             ).status_code,
             200,
         )

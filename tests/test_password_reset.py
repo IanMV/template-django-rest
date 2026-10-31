@@ -15,9 +15,7 @@ class PasswordResetTests(ApiCase):
     base_url = "/api/password-reset/"
 
     def request_code(self, email):
-        response = self.client.post(
-            self.base_url + "request/", {"email": email}, format="json"
-        )
+        response = self.post_with_commit(self.base_url + "request/", {"email": email})
         self.assertEqual(response.status_code, 200, response.data)
         return self.email_code()
 
@@ -169,16 +167,23 @@ class PasswordResetTests(ApiCase):
         user.refresh_from_db()
         self.assertTrue(user.check_password(self.password))
 
-    def test_send_failure_returns_503_without_issuing_code(self):
+    def test_send_failure_does_not_disclose_account_or_leave_code(self):
         user = self.create_user()
         with patch(
             "core.password_reset.services.send_email_token",
             side_effect=RuntimeError("mail down"),
         ):
-            response = self.client.post(
-                self.base_url + "request/", {"email": user.email}, format="json"
-            )
-        self.assertEqual(response.status_code, 503)
+            with self.assertLogs("core.password_reset.services", level="ERROR"):
+                response = self.post_with_commit(
+                    self.base_url + "request/", {"email": user.email}
+                )
+        unknown = self.client.post(
+            self.base_url + "request/",
+            {"email": "missing@example.com"},
+            format="json",
+            REMOTE_ADDR="127.0.0.2",
+        )
+        self.assertEqual((response.status_code, response.data), (unknown.status_code, unknown.data))
         self.assertFalse(PasswordReset.objects.filter(user=user).exists())
 
 

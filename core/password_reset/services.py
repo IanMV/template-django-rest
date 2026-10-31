@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from django.db import transaction
@@ -8,8 +9,9 @@ from core.auth.services import SessionService
 from core.models.password_reset import PasswordReset
 from core.models.user import User
 from core.shared.email_token_sender import send_email_token
-from core.shared.exceptions import ServiceUnavailable
 from core.shared.response_messages import MSG_CODE_INVALID
+
+logger = logging.getLogger(__name__)
 
 
 class PasswordResetService:
@@ -28,9 +30,16 @@ class PasswordResetService:
                 reset_code = PasswordReset(user=user)
                 reset_code.set_code(raw_code)
                 reset_code.save()
-                send_email_token(user.email, raw_code, "Your password reset code")
-        except Exception as exc:
-            raise ServiceUnavailable() from exc
+                def send():
+                    try:
+                        send_email_token(user.email, raw_code, "Your password reset code")
+                    except Exception:
+                        PasswordReset.objects.filter(pk=reset_code.pk).delete()
+                        logger.exception("Password reset mail delivery failed")
+
+                transaction.on_commit(send)
+        except Exception:
+            logger.exception("Password reset code issuance failed")
 
     @staticmethod
     def verify_code(email: str, code: str) -> bool:

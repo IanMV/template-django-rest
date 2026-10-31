@@ -50,6 +50,12 @@ class BehaviorHelpers:
         self.assertIsNotNone(code)
         return code.group()
 
+    def post_with_commit(self, path, data):
+        if isinstance(self, TestCase):
+            with self.captureOnCommitCallbacks(execute=True):
+                return self.client.post(path, data, format="json")
+        return self.client.post(path, data, format="json")
+
 
 @override_settings(
     MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},

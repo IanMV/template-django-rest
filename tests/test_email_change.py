@@ -16,8 +16,8 @@ class EmailChangeTests(ApiCase):
     new_email = "new@example.com"
 
     def request_code(self):
-        response = self.client.post(
-            self.base_url + "request/", {"new_email": self.new_email}, format="json"
+        response = self.post_with_commit(
+            self.base_url + "request/", {"new_email": self.new_email}
         )
         self.assertEqual(response.status_code, 200, response.data)
         return self.email_code()
@@ -162,6 +162,7 @@ class EmailChangeTests(ApiCase):
             200,
         )
 
+class EmailChangeDeliveryFailureTests(ApiTransactionCase):
     def test_delivery_failure_returns_503_without_new_code(self):
         user = self.create_user()
         self.login(user)
@@ -170,7 +171,9 @@ class EmailChangeTests(ApiCase):
             side_effect=RuntimeError("mail down"),
         ):
             response = self.client.post(
-                self.base_url + "request/", {"new_email": self.new_email}, format="json"
+                "/api/email-change/request/",
+                {"new_email": "new@example.com"},
+                format="json",
             )
         self.assertEqual(response.status_code, 503)
         self.assertFalse(EmailChange.objects.filter(user=user).exists())

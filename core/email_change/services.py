@@ -34,7 +34,14 @@ class EmailChangeService:
                 change_code = EmailChange(user=user, new_email=new_email)
                 change_code.set_code(raw_code)
                 change_code.save()
-                send_email_token(new_email, raw_code, "Confirm your new e-mail address")
+                def send():
+                    try:
+                        send_email_token(new_email, raw_code, "Confirm your new e-mail address")
+                    except Exception as exc:
+                        EmailChange.objects.filter(pk=change_code.pk).delete()
+                        raise ServiceUnavailable() from exc
+
+                transaction.on_commit(send)
         except Exception as exc:
             raise ServiceUnavailable() from exc
 

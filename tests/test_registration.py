@@ -15,9 +15,7 @@ class RegistrationTests(ApiCase):
     base_url = "/api/registration/"
 
     def request_code(self):
-        response = self.client.post(
-            self.base_url + "request/", {"email": self.email}, format="json"
-        )
+        response = self.post_with_commit(self.base_url + "request/", {"email": self.email})
         self.assertEqual(response.status_code, 201, response.data)
         return self.email_code()
 
@@ -143,16 +141,18 @@ class RegistrationTests(ApiCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(User.objects.get(email=self.email).is_active)
 
+class RegistrationDeliveryFailureTests(ApiTransactionCase):
     def test_delivery_failure_returns_503_and_rolls_back_new_user(self):
+        email = "new@example.com"
         with patch(
             "core.registration.services.send_email_token",
             side_effect=RuntimeError("mail down"),
         ):
             response = self.client.post(
-                self.base_url + "request/", {"email": self.email}, format="json"
+                "/api/registration/request/", {"email": email}, format="json"
             )
         self.assertEqual(response.status_code, 503)
-        self.assertFalse(User.objects.filter(email=self.email).exists())
+        self.assertFalse(User.objects.filter(email=email).exists())
 
 
 class RegistrationAttemptPersistenceTests(ApiTransactionCase):
