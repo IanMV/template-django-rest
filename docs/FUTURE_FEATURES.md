@@ -143,7 +143,7 @@ flowchart TD
           ]
   ```
 - **Strict Data Blacklist (Never Log):** Passwords, password hashes, 6-digit OTP codes, TOTP secrets, backup codes, JWT tokens, CSRF tokens, session cookies.
-- **Access:** Existing `/admin/` remains unchanged. `GET /api/audit/` is staff-only, paginated, and read-only; `AuditLog` is not registered in Django admin. Service filters details by event-specific key and allowed value, parses/sanitizes user-agent, snapshots the UUID and logs audit-write errors without interrupting authentication. BLOCKED events are deduplicated by cache key. Failure events are recorded outside business transactions. Tests were explicitly prohibited in this task; add audit/maintenance behavioral tests before production use.
+- **Access:** Existing `/admin/` remains unchanged. `GET /api/audit/` is staff-only, paginated, and read-only; `AuditLog` is not registered in Django admin. Service filters details by event-specific key and allowed value, parses/sanitizes user-agent, snapshots the UUID and logs audit-write errors without interrupting authentication. BLOCKED events are deduplicated by cache key. Failure events are recorded outside business transactions. Full behavioral tests verify audit logging, sanitization, authorization, and resilience in `tests/test_audit.py`.
 
 ---
 

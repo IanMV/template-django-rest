@@ -16,7 +16,9 @@ BATCH_SIZE = 500
 
 def delete_batches(queryset, model):
     total = 0
-    while ids := list(queryset.order_by("pk").values_list("pk", flat=True)[:BATCH_SIZE]):
+    while ids := list(
+        queryset.order_by("pk").values_list("pk", flat=True).distinct()[:BATCH_SIZE]
+    ):
         with transaction.atomic():
             _, counts = model.objects.filter(pk__in=ids).delete()
             total += counts.get(model._meta.label, 0)
@@ -28,6 +30,7 @@ def daily_maintenance_purge_task():
     now = timezone.now()
     abandoned = User.objects.filter(
         is_active=False,
+        password="",
         created_at__lt=now - timedelta(hours=48),
         emailverification__isnull=False,
         emailverification__used=False,
