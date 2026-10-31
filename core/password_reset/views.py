@@ -23,7 +23,7 @@ from core.shared.docs import (
 from core.shared.response_messages import (
     MSG_CODE_SENT,
     MSG_CODE_VALID,
-    MSG_PASWORD_RESET,
+    MSG_PASSWORD_RESET,
 )
 
 
@@ -135,4 +135,4 @@ class PasswordResetConfirmView(APIView):
             new_password=serializer.validated_data["new_password"],
         )
 
-        return Response({"detail": MSG_PASWORD_RESET}, status.HTTP_200_OK)
+        return Response({"detail": MSG_PASSWORD_RESET}, status.HTTP_200_OK)

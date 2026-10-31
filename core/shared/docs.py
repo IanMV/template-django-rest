@@ -16,7 +16,7 @@ from core.shared.response_messages import (
     MSG_LOGIN_SUCCESSFUL,
     MSG_LOGOUT_SUCCESSFUL,
     MSG_NO_REFRESH_TOKEN_PROVIDED,
-    MSG_PASWORD_RESET,
+    MSG_PASSWORD_RESET,
     MSG_REFRESH_TOKENS_SUCCESSFUL,
     MSG_SERVICE_UNAVAILABLE,
     MSG_SESSION_REVOKED_OR_INACTIVE,
@@ -76,7 +76,7 @@ EmailAlreadyExistsSerializer = inline_serializer(
 PasswordResetSerializer = inline_serializer(
     "PasswordResetConfirmSuccess",
     {
-        "detail": CharField(default=MSG_PASWORD_RESET),
+        "detail": CharField(default=MSG_PASSWORD_RESET),
     },
 )
 
