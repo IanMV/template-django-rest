@@ -18,6 +18,35 @@ class SessionTests(ApiCase):
         )
         for name in ("access_token", "refresh_token"):
             self.assertEqual(response.cookies[name]["max-age"], 0)
+        self.assertEqual(response.cookies["refresh_token"]["path"], "/api/refresh/")
+        self.assertIn("refresh_token=", response["Set-Cookie"])
+        self.assertIn("Path=/", response["Set-Cookie"])
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
+
+    def test_logout_without_refresh_cookie_still_revokes_session(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/me/logout/")
+        self.assertEqual(response.status_code, 200)
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
+
+    def test_revoke_all_without_refresh_cookie_still_revokes_session(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/me/revoke-sessions/")
+        self.assertEqual(response.status_code, 200)
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
         self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
 
     def test_session_list_marks_only_current_session(self):

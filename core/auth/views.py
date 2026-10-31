@@ -10,6 +10,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from core.auth.authenticate import enforce_csrf
 from core.auth.cookies import (
     clear_auth_cookies,
+    clear_legacy_refresh_cookie,
     get_auth_cookie_kwargs,
     get_auth_cookie_name,
 )
@@ -112,6 +113,7 @@ class LoginView(APIView):
         response.set_cookie(
             "refresh_token", token_data["refresh"], **refresh_cookie_kwargs
         )
+        clear_legacy_refresh_cookie(response)
         csrf.get_token(request)
 
         return response
@@ -163,6 +165,7 @@ class CustomTokenRefreshView(TokenRefreshView):
             token_data["refresh"],
             **get_auth_cookie_kwargs(is_refresh=True),
         )
+        clear_legacy_refresh_cookie(response)
 
         return response
 

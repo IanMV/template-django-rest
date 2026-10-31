@@ -83,6 +83,7 @@ class SessionCacheTests(ApiCase):
         self.login(user)
         session = UserSession.objects.get(user=user)
         self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         key = f"session:{session.pk}"
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(self.client.post("/api/me/logout/").status_code, 200)
@@ -97,6 +98,7 @@ class SessionCacheTests(ApiCase):
         second = UserSession.objects.get(user=user, ip_address="127.0.0.2")
         self.client.get("/api/users/me/")
         other.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(self.client.post("/api/me/revoke-sessions/").status_code, 200)
         for session in (first, second):
@@ -110,6 +112,7 @@ class SessionCacheTests(ApiCase):
         self.login(user, client=other, ip="127.0.0.2")
         second = UserSession.objects.get(user=user, ip_address="127.0.0.2")
         other.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(
                 self.client.delete(f"/api/sessions/{second.pk}/").status_code, 200
@@ -123,6 +126,7 @@ class SessionCacheTests(ApiCase):
         old = UserSession.objects.get(user=user)
         old_token = self.client.cookies["access_token"].value
         self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         with self.captureOnCommitCallbacks(execute=True):
             self.login(user)
         self.assertIsNone(caches["sessions"].get(f"session:{old.pk}"))
@@ -134,6 +138,7 @@ class SessionCacheTests(ApiCase):
         self.login(user)
         session = UserSession.objects.get(user=user)
         self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(self.client.post("/api/me/deactivate/").status_code, 200)
         self.assertIsNone(caches["sessions"].get(f"session:{session.pk}"))
@@ -143,6 +148,7 @@ class SessionCacheTests(ApiCase):
         self.login(user)
         session = UserSession.objects.get(user=user)
         self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         self.assertEqual(
             self.post_with_commit("/api/password-reset/request/", {"email": user.email}).status_code,
             200,
@@ -165,6 +171,7 @@ class SessionCacheTests(ApiCase):
         self.login(user)
         session = UserSession.objects.get(user=user)
         self.client.get("/api/users/me/")
+        del self.client.cookies["refresh_token"]
         self.assertEqual(
             self.post_with_commit(
                 "/api/email-change/request/", {"new_email": "new@example.com"}

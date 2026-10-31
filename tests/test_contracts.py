@@ -76,6 +76,10 @@ class ContractTests(ApiCase):
             self.assertTrue(response.cookies[name]["httponly"])
             self.assertEqual(response.cookies[name]["samesite"], "Lax")
             self.assertFalse(response.cookies[name]["secure"])
+        self.assertEqual(response.cookies["access_token"]["path"], "/")
+        self.assertEqual(response.cookies["refresh_token"]["path"], "/api/refresh/")
+        self.assertIn("Path=/", response["Set-Cookie"])
+        self.assertIn("Max-Age=0", response["Set-Cookie"])
 
     @override_settings(
         SIMPLE_JWT={**settings.SIMPLE_JWT, "AUTH_COOKIE": "custom_access"}
