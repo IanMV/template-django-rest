@@ -20,6 +20,18 @@ def enforce_csrf(request):
 
 
 class CustomAuthentication(JWTAuthentication):
+    db_only_routes = frozenset(
+        {
+            "email-change-request",
+            "email-change-verify",
+            "email-change-confirm",
+            "deactivate-self",
+            "user-sessions-deactivate",
+            "revoke-sessions",
+            "logout",
+        }
+    )
+
     def authenticate(self, request):
 
         # ===========================================================
@@ -58,7 +70,11 @@ class CustomAuthentication(JWTAuthentication):
         # =======================================================
 
         validated_token = self.get_validated_token(raw_token)
-        if not session_is_active(validated_token):
+        match = request.resolver_match
+        if not session_is_active(
+            validated_token,
+            use_cache=not (match and match.url_name in self.db_only_routes),
+        ):
             raise exceptions.AuthenticationFailed()
         if is_cookie_auth and request.method not in (
             "GET",

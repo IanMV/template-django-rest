@@ -10,6 +10,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 NUM_PROXIES = 0
 SESSION_CACHE_TTL = 60
+SESSION_ABSOLUTE_LIFETIME = timedelta(days=30)
 CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
     "sessions": {

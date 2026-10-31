@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.utils import timezone
@@ -8,7 +9,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
     OutstandingToken,
 )
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, UntypedToken
 from user_agents import parse
 
 from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
@@ -32,8 +33,10 @@ class SessionService:
             old_token = RefreshToken(refresh_token_str)
             old_jti = str(old_token.get("jti", ""))
         except TokenError as exc:
+            SessionService.revoke_reused_refresh(refresh_token_str)
             raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN) from exc
 
+        expired = False
         with transaction.atomic():
             session = (
                 UserSession.objects.select_for_update()
@@ -47,27 +50,60 @@ class SessionService:
                 or str(old_token.get("user_id", "")) != str(session.user_id)
             ):
                 raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
-            serializer = serializer_factory(data={"refresh": refresh_token_str})
-            try:
-                serializer.is_valid(raise_exception=True)
-            except TokenError as exc:
-                raise InvalidToken(exc.args[0]) from exc
+            if timezone.now() >= session.created_at + settings.SESSION_ABSOLUTE_LIFETIME:
+                SessionService.deactivate_session(session.user, session.pk)
+                expired = True
+            else:
+                serializer = serializer_factory(data={"refresh": refresh_token_str})
+                try:
+                    serializer.is_valid(raise_exception=True)
+                except TokenError as exc:
+                    raise InvalidToken(exc.args[0]) from exc
 
-            response_data = serializer.validated_data
-            if not response_data.get("access") or not response_data.get("refresh"):
-                raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
-            new_refresh = RefreshToken(response_data["refresh"])
-            new_refresh["session_id"] = session.pk
-            access = str(new_refresh.access_token)
-            refresh = str(new_refresh)
-            if not SessionService.update_session_jtis(
-                old_refresh_jti=old_jti,
-                new_access_jti=str(AccessToken(access).get("jti", "")),
-                new_refresh_jti=str(RefreshToken(refresh).get("jti", "")),
-            ):
-                raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
-            invalidate_sessions([session.pk])
+                response_data = serializer.validated_data
+                if not response_data.get("access") or not response_data.get("refresh"):
+                    raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
+                new_refresh = RefreshToken(response_data["refresh"])
+                new_refresh["session_id"] = session.pk
+                access = str(new_refresh.access_token)
+                refresh = str(new_refresh)
+                if not SessionService.update_session_jtis(
+                    old_refresh_jti=old_jti,
+                    new_access_jti=str(AccessToken(access).get("jti", "")),
+                    new_refresh_jti=str(RefreshToken(refresh).get("jti", "")),
+                ):
+                    raise AuthenticationFailed(MSG_SESSION_REVOKED_OR_INACTIVE)
+                invalidate_sessions([session.pk])
+        if expired:
+            raise InvalidToken(MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN)
         return {"access": access, "refresh": refresh}
+
+    @staticmethod
+    def revoke_reused_refresh(raw_token):
+        try:
+            token = UntypedToken(raw_token)
+        except TokenError:
+            return
+        session_id = token.get("session_id")
+        if (
+            token.get("token_type") != "refresh"
+            or type(session_id) is not int
+            or session_id <= 0
+        ):
+            return
+        old_jti = str(token.get("jti", ""))
+        if not BlacklistedToken.objects.filter(
+            token__jti=old_jti, token__user_id=token.get("user_id")
+        ).exists():
+            return
+        with transaction.atomic():
+            session = (
+                UserSession.objects.select_for_update()
+                .filter(pk=session_id, user_id=token.get("user_id"), is_active=True)
+                .first()
+            )
+            if session and session.refresh_jti != old_jti:
+                SessionService.deactivate_session(session.user, session.pk)
 
     @staticmethod
     def logout_user(user, raw_access_token):

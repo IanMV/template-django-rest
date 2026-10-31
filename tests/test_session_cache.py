@@ -51,6 +51,27 @@ class SessionCacheTests(ApiCase):
             with self.assertLogs("core.auth.session_cache", level="ERROR"):
                 self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
 
+    def test_sensitive_routes_recheck_database_despite_stale_cache_hit(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        self.client.get("/api/users/me/")
+        key = f"session:{session.pk}"
+        self.assertIsNotNone(caches["sessions"].get(key))
+        UserSession.objects.filter(pk=session.pk).update(is_active=False)
+        self.assertEqual(
+            self.client.post(
+                "/api/email-change/request/",
+                {"new_email": "new@example.com"},
+                format="json",
+            ).status_code,
+            401,
+        )
+        self.assertEqual(self.client.post("/api/me/deactivate/").status_code, 401)
+        self.assertEqual(self.client.delete("/api/sessions/999999/").status_code, 401)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
     def test_wrong_binding_never_authenticates_from_cache(self):
         user = self.create_user()
         self.login(user)
@@ -77,6 +98,21 @@ class SessionCacheTests(ApiCase):
         self.assertIsNone(caches["sessions"].get(key))
         self.client.cookies["access_token"] = old_token
         self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
+
+    def test_refresh_reuse_invalidates_new_cached_binding(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        old = self.client.cookies["refresh_token"].value
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.post("/api/refresh/").status_code, 200)
+        self.client.get("/api/users/me/")
+        key = f"session:{session.pk}"
+        self.assertIsNotNone(caches["sessions"].get(key))
+        self.client.cookies["refresh_token"] = old
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.post("/api/refresh/").status_code, 401)
+        self.assertIsNone(caches["sessions"].get(key))
 
     def test_logout_invalidates_cached_session(self):
         user = self.create_user()

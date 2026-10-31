@@ -10,11 +10,11 @@ from core.models.user import UserSession
 logger = logging.getLogger(__name__)
 
 
-def session_is_active(token):
+def session_is_active(token, *, use_cache=True):
     session_id = token.get("session_id")
     jti = str(token.get("jti", ""))
     user_id = str(token.get("user_id", ""))
-    if session_id is not None:
+    if session_id is not None and use_cache:
         try:
             if caches["sessions"].get(f"session:{session_id}") == (jti, user_id):
                 return True
@@ -27,7 +27,7 @@ def session_is_active(token):
     session = sessions.first()
     if not session:
         return False
-    if session_id is not None:
+    if session_id is not None and use_cache:
         timeout = min(
             settings.SESSION_CACHE_TTL,
             int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),

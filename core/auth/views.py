@@ -123,6 +123,12 @@ class CustomTokenRefreshView(TokenRefreshView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    def handle_exception(self, exc):
+        response = super().handle_exception(exc)
+        if response.status_code == 401:
+            clear_auth_cookies(response)
+        return response
+
     @extend_schema(
         tags=["auth"],
         summary="Rotate authentication cookies",

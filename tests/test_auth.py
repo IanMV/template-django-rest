@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
@@ -124,10 +125,43 @@ class RefreshTests(ApiCase):
     def test_old_refresh_cookie_cannot_revive_rotated_session(self):
         user = self.create_user()
         self.login(user)
+        session = UserSession.objects.get(user=user)
         old = self.client.cookies["refresh_token"].value
-        self.assertEqual(self.client.post("/api/refresh/").status_code, 200)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.post("/api/refresh/").status_code, 200)
+        current = self.client.cookies["refresh_token"].value
         self.client.cookies["refresh_token"] = old
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/refresh/")
+        self.assertEqual(response.status_code, 401)
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
+        self.client.cookies["refresh_token"] = current
         self.assertEqual(self.client.post("/api/refresh/").status_code, 401)
+
+    def test_absolute_lifetime_revokes_session_and_clears_cookies(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        UserSession.objects.filter(pk=session.pk).update(
+            created_at=timezone.now() - settings.SESSION_ABSOLUTE_LIFETIME
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/refresh/")
+        self.assertEqual(response.status_code, 401)
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
+        self.assertEqual(response.cookies["access_token"]["max-age"], 0)
+        self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
+
+    def test_session_within_absolute_lifetime_can_refresh(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        UserSession.objects.filter(pk=session.pk).update(
+            created_at=timezone.now() - settings.SESSION_ABSOLUTE_LIFETIME + timedelta(days=1)
+        )
+        self.assertEqual(self.client.post("/api/refresh/").status_code, 200)
 
     def test_revoked_session_cannot_refresh(self):
         user = self.create_user()
