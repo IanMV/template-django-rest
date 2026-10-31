@@ -5,7 +5,7 @@ from .one_time_code import OneTimeCode
 
 
 class EmailChange(OneTimeCode):
-    """ """
+    """One-time code for confirming a new email address."""
 
     new_email = models.EmailField(
         _("new email address"),

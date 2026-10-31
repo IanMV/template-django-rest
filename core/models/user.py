@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -105,9 +106,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     def deactivate(self):
         self.is_active = False
         self.save(update_fields=["is_active", "updated_at"])
-
-
-from django.conf import settings
 
 
 class UserSession(models.Model):
