@@ -6,6 +6,7 @@
 - Make small logical commits: `fix:`, `refactor:`, `doc:`. Commit docs last.
 - Do not read, print, or expose environment values or `.env`.
 - Do not run tests or `pdm run verify` unless the user asks. Run only requested tests. Static checks allowed.
+- Do not run Docker/Compose without explicit authorization; parse configuration statically instead.
 - End each response: changes, rationale/trade-offs, pending work/risk.
 
 ## Structure
@@ -14,6 +15,8 @@
 - Routes: `app/urls.py`; shared docs/routes: `core/shared/`; feature logic: feature `services.py`; session views: `core/auth/session_views.py`.
 - Cross-feature imports: `core.models`, `core.shared`, public `core.auth/{services,authenticate,cookies,rate_limit}`, `core.audit.services` only.
 - Manual test UI: `core/shared/manual.py`, `core/templates/manual/`, `core/static/manual/`; gate on `DEBUG`, use same-origin requests, never bypass API auth or store tokens.
+- Settings: `dev` for SQLite/eager/console; `integrated` imports production services and disables production HTTP/cookie flags; `prod` requires injected configuration and never loads dotenv. Keep TLS proxy trust opt-in outside Compose.
+- Containers: `Dockerfile.dev` for local stacks; `Dockerfile` for nonroot Gunicorn. Keep migrations/static collection in one release process, Beat single-instance, service secrets scoped, and data-service ports private.
 - Preserve route order/names, API schemas/statuses, CSRF, cookie names/paths, and response contracts.
 
 ## Security conventions
@@ -28,6 +31,7 @@
 
 - Install: `pdm install -G dev`
 - Dev: `pdm run migrate`; `pdm run dev`
+- Containers: `pdm run dev:up`, `full:up`, `prod:up`; matching `:down`/`:logs`. Generic wrappers: `compose:dev`, `compose:full`, `compose:prod` (each selects its own env file). See README for human setup; never inspect real env files.
 - Static: `pdm run lint`; `pdm run schema-check`; `pdm run migrations-check`
 - Targeted test: `pdm run test <label>`
 - Integration test: `pdm run test <label> --settings=tests.settings_integration --noinput`
