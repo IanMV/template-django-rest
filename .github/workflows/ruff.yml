@@ -35,3 +35,24 @@ jobs:
     - name: Analysing the code with ruff
       run: |
         pdm run lint
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.14"
+    - uses: pdm-project/setup-pdm@v4
+      with:
+        python-version: "3.14"
+    - name: Start native PostgreSQL and Redis
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql redis-server
+        sudo systemctl start postgresql redis-server
+        sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'test'"
+        sudo -u postgres createdb -O postgres test
+    - run: pdm install -G lint
+    - name: Run production concurrency tests
+      run: pdm run test tests.test_integration --settings=tests.settings_integration --noinput
