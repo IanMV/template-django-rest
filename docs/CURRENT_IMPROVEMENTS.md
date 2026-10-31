@@ -20,6 +20,18 @@
 
 ## 2. Action Items Matrix
 
+Status on this branch (items not marked done remain open):
+
+| Status | Items | Decision |
+| :--- | :--- | :--- |
+| Done | `SEC-04`, `DEV-01`, `BUG-01`, `CLEAN-01`–`CLEAN-04`, `I18N-01` | Implemented without changing public responses. |
+| Partial | `SEC-06` | Row-lock verify attempts; keep 429 verification throttle open because it changes documented responses. Verify effective locking on production DB. |
+| Blocked | `SEC-01` | Pre-existing uncommitted MD5 setting in `app/settings/base.py`; do not overwrite user changes. Production hash security remains at risk until removed. |
+| Contract change | `SEC-02`, `SEC-03`, `SEC-05` | Require explicit authorization to change list status/shape, cookie path, or registration response respectively. |
+| Design review | `ARCH-01`, `PROD-01`, `NET-01` | Preserve mail failure rollback/503; provision Redis before cache switch; define trusted proxy boundary before honoring forwarded headers. Existing mail dispatch inside transactions remains unresolved. |
+
+Do not execute the historical batch verification commands below unless the user explicitly requests tests or verification. The detailed specs below are proposals, not overrides of `AGENTS.md`.
+
 | ID | Priority | Scope | Category | Complexity |
 | :--- | :--- | :--- | :--- | :--- |
 | `SEC-01` | **P0 (Critical)** | `app/settings/base.py`, `tests/base.py` | Crypto / Config | Low |
