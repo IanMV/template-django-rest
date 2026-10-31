@@ -1,6 +1,8 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.conf import settings
+from django.db.models.query import QuerySet
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework_simplejwt.token_blacklist.models import (
@@ -15,6 +17,26 @@ from tests.base import ApiCase
 
 
 class MaintenancePurgeTests(ApiCase):
+    def test_registration_batch_rolls_back_on_delete_failure(self):
+        user = User.objects.create(email="rollback@example.com", is_active=False)
+        User.objects.filter(pk=user.pk).update(
+            created_at=timezone.now() - timedelta(days=3)
+        )
+        EmailVerification.objects.create(
+            user=user, code="expired", expires_at=timezone.now() - timedelta(minutes=1)
+        )
+        delete = QuerySet.delete
+
+        def fail_after_delete(queryset):
+            delete(queryset)
+            raise RuntimeError("Deletion failed")
+
+        with patch.object(QuerySet, "delete", fail_after_delete):
+            with self.assertRaisesMessage(RuntimeError, "Deletion failed"):
+                daily_maintenance_purge_task()
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+        self.assertTrue(EmailVerification.objects.filter(user=user).exists())
+
     def test_celery_beat_schedule_configured_for_three_am(self):
         schedule = settings.CELERY_BEAT_SCHEDULE
         self.assertIn("daily-maintenance-purge", schedule)
@@ -26,7 +48,9 @@ class MaintenancePurgeTests(ApiCase):
         self.assertEqual(entry["schedule"].hour, {3})
         self.assertEqual(entry["schedule"].minute, {0})
 
-    def test_purge_unconfirmed_abandoned_registrations_preserves_self_deactivated_users(self):
+    def test_purge_unconfirmed_abandoned_registrations_preserves_self_deactivated_users(
+        self,
+    ):
         now = timezone.now()
 
         # 1. Abandoned unconfirmed user: inactive, password="", created > 48h ago, verification unused and expired
@@ -36,7 +60,9 @@ class MaintenancePurgeTests(ApiCase):
             password="",
             is_active=False,
         )
-        User.objects.filter(pk=abandoned_user.pk).update(created_at=now - timedelta(hours=50))
+        User.objects.filter(pk=abandoned_user.pk).update(
+            created_at=now - timedelta(hours=50)
+        )
         EmailVerification.objects.create(
             user=abandoned_user,
             code="hashcode",
@@ -51,7 +77,9 @@ class MaintenancePurgeTests(ApiCase):
             password="",
             is_active=False,
         )
-        User.objects.filter(pk=recent_user.pk).update(created_at=now - timedelta(hours=24))
+        User.objects.filter(pk=recent_user.pk).update(
+            created_at=now - timedelta(hours=24)
+        )
         EmailVerification.objects.create(
             user=recent_user,
             code="hashcode2",
@@ -66,7 +94,9 @@ class MaintenancePurgeTests(ApiCase):
             password="",
             is_active=False,
         )
-        User.objects.filter(pk=unexpired_user.pk).update(created_at=now - timedelta(hours=50))
+        User.objects.filter(pk=unexpired_user.pk).update(
+            created_at=now - timedelta(hours=50)
+        )
         EmailVerification.objects.create(
             user=unexpired_user,
             code="hashcode3",
@@ -77,7 +107,9 @@ class MaintenancePurgeTests(ApiCase):
         # 4. Confirmed, then SELF-DEACTIVATED user (> 48h old): MUST SURVIVE!
         deactivated_user = self.create_user(email="self-deactivated@example.com")
         deactivated_user.deactivate()
-        User.objects.filter(pk=deactivated_user.pk).update(created_at=now - timedelta(days=5))
+        User.objects.filter(pk=deactivated_user.pk).update(
+            created_at=now - timedelta(days=5)
+        )
         # Even if an old verification exists
         EmailVerification.objects.create(
             user=deactivated_user,
@@ -175,7 +207,9 @@ class MaintenancePurgeTests(ApiCase):
             event_type="LOGIN",
             status=AuditLog.Status.SUCCESS,
         )
-        AuditLog.objects.filter(pk=old_log.pk).update(created_at=now - timedelta(days=100))
+        AuditLog.objects.filter(pk=old_log.pk).update(
+            created_at=now - timedelta(days=100)
+        )
 
         recent_log = AuditLog.objects.create(
             user=user,
@@ -183,7 +217,9 @@ class MaintenancePurgeTests(ApiCase):
             event_type="LOGIN",
             status=AuditLog.Status.SUCCESS,
         )
-        AuditLog.objects.filter(pk=recent_log.pk).update(created_at=now - timedelta(days=10))
+        AuditLog.objects.filter(pk=recent_log.pk).update(
+            created_at=now - timedelta(days=10)
+        )
 
         # Default AUDIT_RETENTION_DAYS is None -> nothing deleted
         with override_settings(AUDIT_RETENTION_DAYS=None):
@@ -206,7 +242,9 @@ class MaintenancePurgeTests(ApiCase):
 
         outstanding = OutstandingToken.objects.get(jti=str(refresh["jti"]))
         # Set token to expired
-        OutstandingToken.objects.filter(pk=outstanding.pk).update(expires_at=now - timedelta(days=1))
+        OutstandingToken.objects.filter(pk=outstanding.pk).update(
+            expires_at=now - timedelta(days=1)
+        )
         BlacklistedToken.objects.create(token=outstanding)
 
         res = daily_maintenance_purge_task()

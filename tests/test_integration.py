@@ -1,19 +1,23 @@
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from datetime import timedelta
+from threading import Barrier, Event
 from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import authenticate
 from django.core.cache import cache
 from django.db import connection, connections
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed, Throttled
 
 from core.auth.rate_limit import require_current_password
 from core.auth.services import AuthService, SessionService
 from core.email_change.services import EmailChangeService
-from core.models import EmailChange, User, UserSession
+from core.models import EmailChange, EmailVerification, User, UserSession
+from core.registration.services import RegistrationService
+from core.registration.tasks import daily_maintenance_purge_task
 from core.users.services import UserService
 from tests.base import ApiTransactionCase
 
@@ -175,3 +179,57 @@ class ProductionConcurrencyTests(ApiTransactionCase):
                     if state == "password":
                         self.assertTrue(current.is_active)
                         self.assertTrue(current.check_password("ChangedPass!7395"))
+
+    def test_purge_preserves_registration_reissued_after_selection(self):
+        for confirm in (False, True):
+            with self.subTest(confirm=confirm):
+                user = User.objects.create(
+                    email=f"purge-{confirm}@example.com", is_active=False
+                )
+                User.objects.filter(pk=user.pk).update(
+                    created_at=timezone.now() - timedelta(days=3)
+                )
+                EmailVerification.objects.create(
+                    user=user,
+                    code="expired",
+                    expires_at=timezone.now() - timedelta(minutes=1),
+                )
+                selected, finished = Event(), Event()
+                lock_users = User.objects.select_for_update
+
+                def lock_after_reissue(*args, **kwargs):
+                    if not selected.is_set():
+                        selected.set()
+                        if not finished.wait(timeout=10):
+                            raise TimeoutError("Registration worker did not finish")
+                    return lock_users(*args, **kwargs)
+
+                def reissue():
+                    try:
+                        if not selected.wait(timeout=10):
+                            raise TimeoutError("Purge did not select a candidate")
+                        RegistrationService.request_registration(user.email)
+                        if confirm:
+                            RegistrationService.confirm_registration(
+                                user.email,
+                                self.email_code(),
+                                "Registered Person",
+                                self.password,
+                            )
+                    finally:
+                        connections.close_all()
+                        finished.set()
+
+                with patch.object(
+                    User.objects, "select_for_update", side_effect=lock_after_reissue
+                ):
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(reissue)
+                        result = daily_maintenance_purge_task()
+                        future.result(timeout=20)
+                self.assertEqual(result["registrations"], 0)
+                user.refresh_from_db()
+                self.assertEqual(user.is_active, confirm)
+                self.assertGreater(
+                    EmailVerification.objects.get(user=user).expires_at, timezone.now()
+                )

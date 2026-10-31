@@ -20,7 +20,13 @@ def delete_batches(queryset, model):
         queryset.order_by("pk").values_list("pk", flat=True).distinct()[:BATCH_SIZE]
     ):
         with transaction.atomic():
-            _, counts = model.objects.filter(pk__in=ids).delete()
+            list(
+                model.objects.select_for_update(no_key=True)
+                .filter(pk__in=ids)
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
+            _, counts = queryset.filter(pk__in=ids).delete()
             total += counts.get(model._meta.label, 0)
     return total
 
