@@ -10,9 +10,8 @@ DEBUG = True
 CELERY_TASK_ALWAYS_EAGER = True
 DEBUG_PROPAGATE_EXCEPTIONS = False
 ALLOWED_HOSTS = []
-SECRET_KEY = os.getenv(
-    "SECRET_KEY",
-    "django-insecure-dev-fallback-secret-key-with-at-least-thirty-two-bytes-12345",
+SECRET_KEY = os.getenv("SECRET_KEY") or (
+    "django-insecure-dev-fallback-secret-key-with-at-least-thirty-two-bytes-12345"
 )
 DATABASES = {
     "default": {

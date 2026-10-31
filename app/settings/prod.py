@@ -8,13 +8,15 @@ from .base import *  # noqa: F403
 
 DEBUG = False
 retention = os.getenv("AUDIT_RETENTION_DAYS")
-if retention is not None:
+if retention not in (None, ""):
     try:
         AUDIT_RETENTION_DAYS = int(retention)
         if AUDIT_RETENTION_DAYS <= 0:
             raise ValueError
     except ValueError as exc:
-        raise ImproperlyConfigured("AUDIT_RETENTION_DAYS must be a positive integer.") from exc
+        raise ImproperlyConfigured(
+            "AUDIT_RETENTION_DAYS must be a positive integer."
+        ) from exc
 try:
     NUM_PROXIES = int(os.getenv("NUM_PROXIES", "0"))
     if NUM_PROXIES < 0:
@@ -70,7 +72,9 @@ if not redis_url:
     raise ImproperlyConfigured("REDIS_URL is required in production.")
 redis_parts = urlsplit(redis_url)
 if redis_parts.scheme not in ("redis", "rediss") or not redis_parts.hostname:
-    raise ImproperlyConfigured("REDIS_URL must be a redis:// or rediss:// URL with a host.")
+    raise ImproperlyConfigured(
+        "REDIS_URL must be a redis:// or rediss:// URL with a host."
+    )
 if redis_parts.scheme == "rediss" and (
     not redis_parts.password or "ssl_cert_reqs" in parse_qs(redis_parts.query)
 ):
@@ -111,11 +115,25 @@ MAILERS = {
             "username": os.getenv("EMAIL_HOST_USER", ""),
             "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
             "use_tls": os.getenv("EMAIL_USE_TLS", "True").lower() == "true",
+            "use_ssl": os.getenv("EMAIL_USE_SSL", "False").lower() == "true",
             "timeout": 10,
         },
     }
 }
+if MAILERS["default"]["BACKEND"] in (
+    "django.core.mail.backends.console.EmailBackend",
+    "django.core.mail.backends.locmem.EmailBackend",
+):
+    MAILERS["default"].pop("OPTIONS")
+elif (
+    MAILERS["default"]["OPTIONS"]["use_tls"]
+    and MAILERS["default"]["OPTIONS"]["use_ssl"]
+):
+    raise ImproperlyConfigured(
+        "EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled."
+    )
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@example.com")
+STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
 
 SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
 SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
@@ -123,4 +141,8 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = (
     os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "False").lower() == "true"
 )
 SECURE_HSTS_PRELOAD = False
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https")
+    if os.getenv("TRUST_PROXY_HEADERS", "False").lower() == "true"
+    else None
+)
