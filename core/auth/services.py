@@ -230,9 +230,11 @@ class SessionService:
     def revoke_all_sessions(user):
         with transaction.atomic():
             User.objects.select_for_update(no_key=True).get(pk=user.pk)
-            tokens = OutstandingToken.objects.filter(user=user)
+            token_ids = OutstandingToken.objects.filter(
+                user=user, expires_at__gt=timezone.now(), blacklistedtoken__isnull=True
+            ).values_list("pk", flat=True)
             BlacklistedToken.objects.bulk_create(
-                [BlacklistedToken(token=token) for token in tokens],
+                [BlacklistedToken(token_id=token_id) for token_id in token_ids],
                 ignore_conflicts=True,
             )
             sessions = UserSession.objects.filter(user=user, is_active=True)

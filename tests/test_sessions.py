@@ -1,5 +1,13 @@
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
-from rest_framework_simplejwt.tokens import AccessToken
+from datetime import timedelta
+from unittest.mock import patch
+
+from django.core.cache import caches
+from django.utils import timezone
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from core.auth.services import SessionService
 from core.models.user import UserSession
@@ -7,6 +15,63 @@ from tests.base import ApiCase
 
 
 class SessionTests(ApiCase):
+    def test_revoke_all_skips_expired_and_already_blacklisted_tokens(self):
+        user = self.create_user()
+        self.login(user)
+        current = OutstandingToken.objects.get(user=user)
+        now = timezone.now()
+        expired = RefreshToken.for_user(user)
+        boundary = RefreshToken.for_user(user)
+        blocked = RefreshToken.for_user(user)
+        OutstandingToken.objects.filter(jti=expired["jti"]).update(
+            expires_at=now - timedelta(seconds=1)
+        )
+        OutstandingToken.objects.filter(jti=boundary["jti"]).update(expires_at=now)
+        BlacklistedToken.objects.create(
+            token=OutstandingToken.objects.get(jti=blocked["jti"])
+        )
+        with patch("django.utils.timezone.now", return_value=now):
+            with patch.object(
+                BlacklistedToken.objects,
+                "bulk_create",
+                wraps=BlacklistedToken.objects.bulk_create,
+            ) as insert:
+                SessionService.revoke_all_sessions(user)
+                SessionService.revoke_all_sessions(user)
+        self.assertEqual(
+            [item.token_id for item in insert.call_args_list[0].args[0]], [current.pk]
+        )
+        self.assertEqual(insert.call_args_list[1].args[0], [])
+        self.assertFalse(
+            BlacklistedToken.objects.filter(
+                token__jti__in=[expired["jti"], boundary["jti"]]
+            ).exists()
+        )
+        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 2)
+        self.assertFalse(UserSession.objects.get(user=user).is_active)
+
+    def test_revoke_all_rolls_back_blacklist_insertion_failure(self):
+        user = self.create_user()
+        self.login(user)
+        session = UserSession.objects.get(user=user)
+        self.client.get("/api/users/me/")
+        binding = caches["sessions"].get(f"session:{session.pk}")
+        insert = BlacklistedToken.objects.bulk_create
+
+        def fail_after_insert(*args, **kwargs):
+            insert(*args, **kwargs)
+            raise RuntimeError("Blacklist insertion failed")
+
+        with patch.object(
+            BlacklistedToken.objects, "bulk_create", side_effect=fail_after_insert
+        ):
+            with self.assertRaisesMessage(RuntimeError, "Blacklist insertion failed"):
+                SessionService.revoke_all_sessions(user)
+        session.refresh_from_db()
+        self.assertTrue(session.is_active)
+        self.assertFalse(BlacklistedToken.objects.filter(token__user=user).exists())
+        self.assertEqual(caches["sessions"].get(f"session:{session.pk}"), binding)
+
     def test_logout_revocation_rolls_back_on_failure(self):
         user = self.create_user()
         self.login(user)
@@ -169,8 +234,3 @@ class SessionTests(ApiCase):
         self.assertEqual(response.cookies["access_token"]["max-age"], 0)
         self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
         self.assertEqual(other.get("/api/users/me/").status_code, 401)
-
-
-from unittest.mock import patch
-
-from django.core.cache import caches

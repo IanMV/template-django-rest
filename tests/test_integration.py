@@ -25,6 +25,58 @@ from tests.base import ApiTransactionCase
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL/Redis settings")
 class ProductionConcurrencyTests(ApiTransactionCase):
+    def test_revoke_all_and_refresh_are_safe_in_both_orders(self):
+        from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
+
+        for revoke_first in (False, True):
+            with self.subTest(revoke_first=revoke_first):
+                user = self.create_user(email=f"revoke-{revoke_first}@example.com")
+                self.login(user)
+                raw = self.client.cookies["refresh_token"].value
+                reached, revoked = Event(), Event()
+                rotate = SessionService._rotate_refresh
+
+                def ordered_rotation(*args):
+                    if revoke_first:
+                        reached.set()
+                        if not revoked.wait(timeout=10):
+                            raise TimeoutError("Revocation did not finish")
+                        return rotate(*args)
+                    result = rotate(*args)
+                    reached.set()
+                    return result
+
+                def refresh():
+                    try:
+                        SessionService.refresh_tokens(raw, TokenRefreshSerializer)
+                        return 200
+                    except AuthenticationFailed:
+                        return 401
+                    finally:
+                        connections.close_all()
+
+                with patch.object(
+                    SessionService, "_rotate_refresh", side_effect=ordered_rotation
+                ):
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(refresh)
+                        try:
+                            self.assertTrue(reached.wait(timeout=10))
+                            SessionService.revoke_all_sessions(user)
+                        finally:
+                            revoked.set()
+                        self.assertEqual(
+                            future.result(timeout=20), 401 if revoke_first else 200
+                        )
+                session = UserSession.objects.get(user=user)
+                self.assertFalse(session.is_active)
+                self.assertTrue(
+                    BlacklistedToken.objects.filter(
+                        token__jti=session.refresh_jti
+                    ).exists()
+                )
+
     def test_concurrent_case_variant_emails_create_one_account(self):
         ready = Barrier(2)
 
