@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,6 +10,7 @@ from core.auth.services import SessionService
 from core.shared.docs import (
     CsrfFailureExample,
     CsrfForbiddenSerializer,
+    ForbiddenSerializer,
     NotAuthenticatedSerializer,
     UserDeactivatedSerializer,
     UserRevokedAllSessionsSerializer,
@@ -63,23 +65,33 @@ class UserMeView(APIView):
         return Response(serializer.data, status.HTTP_200_OK)
 
 
+class UserListPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
 class UserListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminUser]
+    pagination_class = UserListPagination
 
     @extend_schema(
         tags=["user"],
         summary="List users",
-        description="Retrieves a list of users registered in the system based on the authorization rules evaluated in the service layer.",
+        description="Staff-only paginated list of active users.",
         responses={
             200: UserListRetrieveSerializer(many=True),
             401: NotAuthenticatedSerializer,
+            403: ForbiddenSerializer,
         },
         request=None,
     )
     def get(self, request):
-        users = UserService.list_users(requesting_user=request.user)
-        serializer = UserListRetrieveSerializer(users, many=True)
-        return Response(serializer.data, status.HTTP_200_OK)
+        users = UserService.list_users()
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(users, request, view=self)
+        serializer = UserListRetrieveSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class DeactivateSelfView(APIView):

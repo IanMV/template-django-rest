@@ -6,10 +6,8 @@ from core.models.user import User
 
 class UserService:
     @staticmethod
-    def list_users(requesting_user: User):
-        if requesting_user.is_staff or requesting_user.is_superuser:
-            return User.objects.all()
-        return User.objects.filter(is_active=True)
+    def list_users():
+        return User.objects.filter(is_active=True).order_by("-created_at")
 
     @staticmethod
     def deactivate_user(requesting_user: User):

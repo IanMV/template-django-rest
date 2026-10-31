@@ -2,6 +2,7 @@ from drf_spectacular.utils import OpenApiExample, OpenApiResponse, inline_serial
 from rest_framework.exceptions import (
     AuthenticationFailed,
     NotAuthenticated,
+    PermissionDenied,
 )
 from rest_framework.serializers import CharField
 
@@ -75,6 +76,10 @@ NotAuthenticatedSerializer = inline_serializer(
     {
         "detail": CharField(default=NotAuthenticated().default_detail),
     },
+)
+
+ForbiddenSerializer = inline_serializer(
+    "ForbiddenResponse", {"detail": CharField(default=PermissionDenied().default_detail)}
 )
 
 IncorrectAuthenticationsCredentialsSerializer = inline_serializer(

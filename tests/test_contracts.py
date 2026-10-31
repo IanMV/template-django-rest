@@ -66,6 +66,17 @@ class ContractTests(ApiCase):
             405,
         )
 
+    def test_user_list_requires_staff_and_is_paginated(self):
+        user = self.create_user()
+        self.login(user)
+        self.assertEqual(self.client.get("/api/users/list/").status_code, 403)
+        staff = self.create_user(email="staff@example.com", is_staff=True)
+        self.login(staff)
+        response = self.client.get("/api/users/list/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(len(response.data["results"]), 2)
+
     def test_atomic_requests_is_disabled(self):
         self.assertFalse(connections["default"].settings_dict["ATOMIC_REQUESTS"])
 
