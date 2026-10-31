@@ -223,16 +223,33 @@ class AuthService:
         jti_refresh = str(refresh.get("jti"))
 
         with transaction.atomic():
-            sessions = UserSession.objects.select_for_update().filter(
-                user=user,
-                device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
-                ip_address=ip_address,
-                is_active=True,
+            candidate_ids = set(
+                UserSession.objects.select_for_update()
+                .filter(
+                    user=user,
+                    device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
+                    ip_address=ip_address,
+                    is_active=True,
+                )
+                .values_list("pk", flat=True)
             )
-            replaced_ids = set()
-            for session in sessions:
-                SessionService.deactivate_session(user, session.pk)
-                replaced_ids.add(session.pk)
+            if previous_session:
+                candidate_ids.add(previous_session.pk)
+            revoked = list(
+                UserSession.objects.select_for_update().filter(
+                    pk__in=candidate_ids, is_active=True
+                )
+            )
+            replaced_ids = [item.pk for item in revoked]
+            refresh_jtis = [item.refresh_jti for item in revoked if item.refresh_jti]
+            outstanding = OutstandingToken.objects.filter(jti__in=refresh_jtis)
+            BlacklistedToken.objects.bulk_create(
+                [BlacklistedToken(token=token) for token in outstanding],
+                ignore_conflicts=True,
+            )
+            if replaced_ids:
+                UserSession.objects.filter(pk__in=replaced_ids).update(is_active=False)
+                invalidate_sessions(replaced_ids)
             session = UserSession.objects.create(
                 user=user,
                 device_name=f"{user_agent.browser.family} on {user_agent.os.family}",
@@ -242,11 +259,6 @@ class AuthService:
             )
             refresh["session_id"] = session.pk
             access["session_id"] = session.pk
-        if previous_session and previous_session.pk not in replaced_ids:
-            SessionService.deactivate_session(
-                previous_session.user, previous_session.pk
-            )
-
         reset_login_attempts(email, ip_address)
 
         return {
