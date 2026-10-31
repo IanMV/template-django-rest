@@ -24,11 +24,11 @@ Status on this branch (items not marked done remain open):
 
 | Status | Items | Decision |
 | :--- | :--- | :--- |
-| Done | `SEC-04`, `NET-01`, `DEV-01`, `BUG-01`, `CLEAN-01`–`CLEAN-04`, `I18N-01` | Implemented without changing public responses. NET-01 uses validated REMOTE_ADDR on short/invalid XFF instead of trusting the first forwarded entry. |
+| Done | `SEC-04`, `NET-01`, `PROD-01`, `DEV-01`, `BUG-01`, `CLEAN-01`–`CLEAN-04`, `I18N-01` | Implemented without changing public responses. NET-01 uses validated REMOTE_ADDR on short/invalid XFF instead of trusting the first forwarded entry. PROD-01 requires REDIS_URL; validate production deployment separately. |
 | Partial | `SEC-06` | Row-lock verify attempts; keep 429 verification throttle open because it changes documented responses. Verify effective locking on production DB. |
 | Partial | `SEC-01` | Global MD5 setting is absent on the current branch; test-scoped hasher and key remain open. |
 | Contract change | `SEC-02`, `SEC-03`, `SEC-05` | Require explicit authorization to change list status/shape, cookie path, or registration response respectively. |
-| Design review | `ARCH-01`, `PROD-01` | Preserve mail failure rollback/503; provision Redis before cache switch. Existing mail dispatch inside transactions remains unresolved. |
+| Design review | `ARCH-01` | Preserve mail failure rollback/503. Existing mail dispatch inside transactions remains unresolved. |
 
 Do not execute the historical batch verification commands below unless the user explicitly requests tests or verification. The detailed specs below are proposals, not overrides of `AGENTS.md`.
 
@@ -277,42 +277,10 @@ Do not execute the historical batch verification commands below unless the user 
 
 ### `PROD-01`: Configure Django 6.1 Unified Mailers, Redis Cache & HTTPS Headers
 
-- **Target Files:**
-  - `app/settings/prod.py`
-- **Root Cause:** Django 6.1 unified `MAILERS` requires backend connection options nested inside `"OPTIONS"`. Flat top-level keys are ignored, defaulting SMTP to unauthenticated `localhost:25`.
-- **Implementation:**
-  In `app/settings/prod.py`:
-  ```python
-  CACHES = {
-      "default": {
-          "BACKEND": "django.core.cache.backends.redis.RedisCache",
-          "LOCATION": os.getenv("REDIS_URL", "redis://127.0.0.1:6379/1"),
-      }
-  }
-
-  MAILERS = {
-      "default": {
-          "BACKEND": os.getenv(
-              "EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend"
-          ),
-          "OPTIONS": {
-              "host": os.getenv("EMAIL_HOST", "localhost"),
-              "port": int(os.getenv("EMAIL_PORT", 587)),
-              "username": os.getenv("EMAIL_HOST_USER", ""),
-              "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
-              "use_tls": os.getenv("EMAIL_USE_TLS", "True").lower() == "true",
-          },
-      }
-  }
-  DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@example.com")
-
-  SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
-  SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", 31536000))
-  SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-  SECURE_HSTS_PRELOAD = True
-  SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-  ```
-- **Verification Command:** `SECRET_KEY=deploykey32byteslongforcheck12345 pdm run deploy-check`.
+- **Done:** `app/settings/prod.py` configures Django's RedisCache with required `REDIS_URL` (no localhost fallback); Redis dependency is already declared and installed. Do not log the URL: it may contain credentials. Use `rediss://` with credentials unless Redis is on a private network. Provision and check a shared Redis before deployment.
+- **Mail:** Django 6.1 `MAILERS["default"]["OPTIONS"]` supplies SMTP `host`, `port`, `username`, `password`, `use_tls`; [official migration reference](https://docs.djangoproject.com/en/6.1/howto/mailers-migration/#migrating-settings). Dev/test already use `MAILERS`; no deprecated Django `EMAIL_*` settings remain. Confirm SMTP credentials and sender domain in deployment.
+- **HTTPS:** Redirect enabled; HSTS one year by default, no preload, include-subdomains only via explicit env toggle. `SECURE_PROXY_SSL_HEADER` requires the ingress to **overwrite** client-supplied `X-Forwarded-Proto` and block direct app access; do not enable without this trust boundary.
+- **Verification:** Deploy check now requires `REDIS_URL` plus other production settings; no Redis connection, SMTP delivery, or deployment check was executed here.
 
 ---
 
