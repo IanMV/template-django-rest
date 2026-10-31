@@ -121,6 +121,10 @@ class UserSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    remember_me = models.BooleanField(
+        default=False,
+        help_text=_("Refresh tokens remain valid for seven days of inactivity."),
+    )
 
     def __str__(self):
         return f"{self.user} - {self.device_name}"
