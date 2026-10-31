@@ -7,7 +7,6 @@ MSG_CODE_SENT = _("If the e-mail exists, a code was sent.")
 MSG_CODE_VALID = _("Code is valid.")
 MSG_USER_CREATED = _("User successfully created.")
 MSG_PASSWORD_RESET = _("Password has been reset successfully.")
-MSG_PASWORD_RESET = MSG_PASSWORD_RESET
 MSG_EMAIL_CHANGED = _("E-mail successfully changed.")
 MSG_USER_DEACTIVATED = _("Your account has been successfully deactivated.")
 MSG_USER_REVOKED_ALL_SESSIONS = _("All active sessions have been revoked.")
