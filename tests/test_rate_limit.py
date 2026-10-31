@@ -1,8 +1,13 @@
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 from django.core.cache import cache
+from rest_framework import serializers
+from rest_framework.exceptions import Throttled
 
+from core.auth.rate_limit import require_current_password
+from core.shared.exceptions import ServiceUnavailable
 from tests.base import ApiCase
 
 
@@ -207,3 +212,60 @@ class CodeVerificationRateLimitTests(ApiCase):
                     format="json",
                 )
         self.assertEqual(response.status_code, 503)
+
+
+class ReauthenticationRateLimitTests(ApiCase):
+    def test_reauth_atomic_throttle_under_concurrent_failures(self):
+        user = self.create_user()
+        user_digest = hashlib.sha256(str(user.pk).encode()).hexdigest()
+        key = f"reauth:user:{user_digest}"
+        cache.set(key, 4, timeout=300)
+
+        results = []
+
+        def worker():
+            try:
+                require_current_password(user, "wrong-password")
+                results.append("ok")
+            except serializers.ValidationError:
+                results.append("400")
+            except Throttled:
+                results.append("429")
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(worker) for _ in range(5)]
+            for future in futures:
+                future.result()
+
+        self.assertEqual(sorted(results), ["400", "429", "429", "429", "429"])
+        self.assertEqual(cache.get(key), 9)
+
+    def test_reauth_subsequent_attempts_throttled_before_password_check(self):
+        user = self.create_user()
+        user_digest = hashlib.sha256(str(user.pk).encode()).hexdigest()
+        key = f"reauth:user:{user_digest}"
+        cache.set(key, 5, timeout=300)
+
+        with patch.object(user, "check_password") as mock_check:
+            with self.assertRaises(Throttled):
+                require_current_password(user, self.password)
+            mock_check.assert_not_called()
+
+    def test_reauth_success_resets_counter(self):
+        user = self.create_user()
+        user_digest = hashlib.sha256(str(user.pk).encode()).hexdigest()
+        key = f"reauth:user:{user_digest}"
+        with self.assertRaises(serializers.ValidationError):
+            require_current_password(user, "wrong-password")
+        self.assertEqual(cache.get(key), 1)
+
+        require_current_password(user, self.password)
+        self.assertIsNone(cache.get(key))
+
+    def test_reauth_cache_failure_during_increment_fails_closed(self):
+        user = self.create_user()
+        with patch("core.auth.rate_limit.cache.add", side_effect=RuntimeError("down")):
+            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+                with self.assertRaises(ServiceUnavailable):
+                    require_current_password(user, "wrong-password")
+

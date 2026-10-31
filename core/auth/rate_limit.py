@@ -96,7 +96,7 @@ def require_current_password(user, password: str) -> None:
     user_digest = hashlib.sha256(str(user.pk).encode()).hexdigest()
     key = f"reauth:user:{user_digest}"
     try:
-        attempts = cache.get(key, 0)
+        attempts = cache.get(key, 0) or 0
     except Exception as exc:
         logger.exception("Reauthentication throttle unavailable")
         raise ServiceUnavailable() from exc
@@ -107,11 +107,19 @@ def require_current_password(user, password: str) -> None:
     try:
         if valid:
             cache.delete(key)
-        elif not cache.add(key, 1, timeout=300):
-            try:
-                cache.incr(key)
-            except ValueError:
-                cache.add(key, 1, timeout=300)
+        else:
+            if cache.add(key, 1, timeout=300):
+                failures = 1
+            else:
+                try:
+                    failures = cache.incr(key)
+                except ValueError:
+                    cache.add(key, 1, timeout=300)
+                    failures = 1
+            if failures > 5:
+                raise Throttled(wait=300)
+    except Throttled:
+        raise
     except Exception as exc:
         logger.exception("Reauthentication throttle unavailable")
         raise ServiceUnavailable() from exc

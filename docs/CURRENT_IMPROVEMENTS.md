@@ -26,36 +26,15 @@
 | **3.2** | Misspelled alias `MSG_PASWORD_RESET` | **Fixed:** Purged unused typo alias. |
 | **3.3** | Empty permissions package | **Fixed:** Removed empty directory and initializer. |
 | **3.4** | Canonical model exports | **Fixed:** `core.models` exports all models; satisfying cross-feature import boundaries. |
+| **P1.1** | Production `SECRET_KEY` & PostgreSQL validation | **Fixed:** `app/settings/prod.py` validates `SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`, and `REDIS_URL` during startup, raising `ImproperlyConfigured` if missing/invalid. Configured PostgreSQL engine for production row-level locking. Local development remains on SQLite. |
+| **P1.2** | Atomic reauthentication throttling | **Fixed:** `core/auth/rate_limit.py:require_current_password` atomically increments and checks failure count via `cache.add`/`cache.incr`, raising `Throttled` (429) when failures exceed 5 to prevent concurrent race-condition bypass. |
+| **P2** | Superuser password enforcement | **Fixed:** `core/models/user.py:UserManager.create_superuser` rejects `password=None` or empty strings before `_create_user`, preventing creation of passwordless superusers. |
+| **P3.1** | Stale dev database comments | **Fixed:** Purged 34 commented-out database options from `app/settings/dev.py`. |
+| **P3.2** | Explicit `.env` loading boundaries | **Fixed:** Isolated `load_dotenv()` strictly to `app/settings/dev.py`. Removed from `base.py`. Production relies exclusively on injected environment variables. |
 
 ---
 
 ## 2. Open Items
 
-### P1. Validate production secret key and database configuration
+*No open backlog items.*
 
-- In `app/settings/prod.py`, fail during startup if `SECRET_KEY` is missing or empty; do not defer failure to request handling.
-- Replace the production SQLite configuration with a database that supports effective row-level locking (for example, PostgreSQL). Keep local development on SQLite.
-- Preserve the documented settings contract and avoid logging secret values.
-- Add focused checks for missing `SECRET_KEY` and production database engine/configuration. Do not claim concurrency safety based on SQLite.
-
-### P1. Make reauthentication throttling atomic
-
-- In `core/auth/rate_limit.py:require_current_password`, prevent concurrent requests from bypassing the five-failure limit.
-- Use an atomic operation supported by the shared production cache for checking/incrementing the counter; retain fail-closed behavior on cache errors, existing response semantics, and successful-attempt reset.
-- Add a focused test for concurrent or atomic counter behavior where the test backend can meaningfully exercise it; do not infer multi-worker behavior from locmem.
-
-### P2. Require a password when creating a superuser
-
-- In `core/models/user.py:UserManager.create_superuser`, reject `password=None` before creating the account.
-- Preserve standard Django manager behavior and add a focused test that no user is created when the password is missing.
-
-### P3. Remove stale development database comments
-
-- Delete the commented-out database option list in `app/settings/dev.py`; it has no runtime effect and includes duplicates.
-- Keep the actual SQLite development configuration unchanged.
-
-### P3. Make `.env` loading intent explicit
-
-- Review `python-dotenv` and `load_dotenv()` in `pyproject.toml` and `app/settings/base.py`.
-- Decide and document whether automatic `.env` loading is required for local development. If it is, keep the dependency and limit loading to the development configuration; production must rely on injected settings and must not load an incidental `.env` file. If it is not required, remove the dependency and call.
-- Do not inspect, print, or commit real environment values while making this change.

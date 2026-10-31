@@ -124,3 +124,21 @@ class UserTests(ApiCase):
         self.assertEqual(response.cookies["access_token"]["max-age"], 0)
         self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
         self.assertEqual(other.get("/api/users/me/").status_code, 401)
+
+    def test_create_superuser_requires_password(self):
+        with self.assertRaisesMessage(ValueError, "Superuser must have a password."):
+            User.objects.create_superuser(
+                email="admin_no_pass@example.com",
+                password=None,
+                name="Admin",
+            )
+        self.assertFalse(User.objects.filter(email="admin_no_pass@example.com").exists())
+
+        with self.assertRaisesMessage(ValueError, "Superuser must have a password."):
+            User.objects.create_superuser(
+                email="admin_empty_pass@example.com",
+                password="",
+                name="Admin",
+            )
+        self.assertFalse(User.objects.filter(email="admin_empty_pass@example.com").exists())
+

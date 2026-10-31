@@ -149,3 +149,90 @@ class ContractTests(ApiCase):
 
     def test_schema_endpoint_is_available(self):
         self.assertEqual(self.client.get("/api/docs/schema/").status_code, 200)
+
+    def test_production_settings_validation(self):
+        import importlib
+        import os
+        from unittest.mock import patch
+
+        from django.core.exceptions import ImproperlyConfigured
+
+        base_prod_env = {
+            "SECRET_KEY": "production-secret-key-that-is-sufficiently-long",
+            "ALLOWED_HOSTS": "api.example.com",
+            "CSRF_TRUSTED_ORIGINS": "https://api.example.com",
+            "REDIS_URL": "redis://localhost:6379/0",
+            "DATABASE_URL": "postgresql://dbuser:dbpass@localhost:5432/appdb",
+        }
+
+        # 1. Missing or empty SECRET_KEY raises ImproperlyConfigured
+        for empty_key in (None, "", "   "):
+            env = base_prod_env.copy()
+            if empty_key is None:
+                env.pop("SECRET_KEY", None)
+            else:
+                env["SECRET_KEY"] = empty_key
+            with patch.dict(os.environ, env, clear=True):
+                with self.assertRaisesMessage(
+                    ImproperlyConfigured, "SECRET_KEY is required in production."
+                ):
+                    import app.settings.prod
+
+                    importlib.reload(app.settings.prod)
+
+        # 2. Missing DATABASE_URL raises ImproperlyConfigured
+        env = base_prod_env.copy()
+        env.pop("DATABASE_URL", None)
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesMessage(
+                ImproperlyConfigured, "DATABASE_URL is required in production."
+            ):
+                import app.settings.prod
+
+                importlib.reload(app.settings.prod)
+
+        # 3. Non-postgresql DATABASE_URL raises ImproperlyConfigured
+        env = base_prod_env.copy()
+        env["DATABASE_URL"] = "sqlite:///local.db"
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesMessage(
+                ImproperlyConfigured,
+                "Production requires a PostgreSQL database supporting row-level locking.",
+            ):
+                import app.settings.prod
+
+                importlib.reload(app.settings.prod)
+
+        # 4. DATABASE_URL without database name raises ImproperlyConfigured
+        env = base_prod_env.copy()
+        env["DATABASE_URL"] = "postgresql://localhost:5432/"
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesMessage(
+                ImproperlyConfigured,
+                "DATABASE_URL must include a database name in its path.",
+            ):
+                import app.settings.prod
+
+                importlib.reload(app.settings.prod)
+
+        # 5. Valid PostgreSQL DATABASE_URL configures PostgreSQL engine and connection params
+        env = base_prod_env.copy()
+        env["DATABASE_URL"] = (
+            "postgresql://custom_user:pass%40word@db.internal:5433/custom_db?sslmode=require"
+        )
+        with patch.dict(os.environ, env, clear=True):
+            import app.settings.prod
+
+            prod = importlib.reload(app.settings.prod)
+            self.assertEqual(
+                prod.DATABASES["default"]["ENGINE"], "django.db.backends.postgresql"
+            )
+            self.assertEqual(prod.DATABASES["default"]["NAME"], "custom_db")
+            self.assertEqual(prod.DATABASES["default"]["USER"], "custom_user")
+            self.assertEqual(prod.DATABASES["default"]["PASSWORD"], "pass@word")
+            self.assertEqual(prod.DATABASES["default"]["HOST"], "db.internal")
+            self.assertEqual(prod.DATABASES["default"]["PORT"], "5433")
+            self.assertEqual(
+                prod.DATABASES["default"]["OPTIONS"], {"sslmode": "require"}
+            )
+

@@ -1,5 +1,5 @@
 import os
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -13,12 +13,44 @@ SESSION_COOKIE_SECURE = True
 ALLOWED_HOSTS = [
     host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
 ]
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured("ALLOWED_HOSTS is required in production.")
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+if not CSRF_TRUSTED_ORIGINS:
+    raise ImproperlyConfigured("CSRF_TRUSTED_ORIGINS is required in production.")
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY or not SECRET_KEY.strip():
+    raise ImproperlyConfigured("SECRET_KEY is required in production.")
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise ImproperlyConfigured("DATABASE_URL is required in production.")
+db_parts = urlsplit(database_url)
+if db_parts.scheme not in ("postgres", "postgresql"):
+    raise ImproperlyConfigured(
+        "Production requires a PostgreSQL database supporting row-level locking."
+    )
+db_name = unquote(db_parts.path.lstrip("/"))
+if not db_name:
+    raise ImproperlyConfigured("DATABASE_URL must include a database name in its path.")
+
+db_options = {k: v[0] for k, v in parse_qs(db_parts.query).items() if v}
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_name,
+        "USER": unquote(db_parts.username or ""),
+        "PASSWORD": unquote(db_parts.password or ""),
+        "HOST": db_parts.hostname or "",
+        "PORT": str(db_parts.port) if db_parts.port else "5432",
+    }
+}
+if db_options:
+    DATABASES["default"]["OPTIONS"] = db_options
+
 redis_url = os.getenv("REDIS_URL")
 if not redis_url:
     raise ImproperlyConfigured("REDIS_URL is required in production.")
@@ -67,9 +99,4 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = (
 )
 SECURE_HSTS_PRELOAD = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": os.getenv("DATABASE_NAME", str(BASE_DIR / "db.sqlite3")),  # noqa: F405
-    }
-}
+
