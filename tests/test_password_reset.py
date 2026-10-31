@@ -164,8 +164,20 @@ class PasswordResetTests(ApiCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+        self.assertIn("new_password", response.data)
         user.refresh_from_db()
         self.assertTrue(user.check_password(self.password))
+
+    def test_invalid_code_prevents_account_enumeration_via_similarity(self):
+        user = self.create_user()
+        response = self.client.post(
+            self.base_url + "confirm/",
+            {"email": user.email, "code": "000000", "new_password": user.name},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("code", response.data)
+        self.assertNotIn("new_password", response.data)
 
     def test_send_failure_does_not_disclose_account_or_leave_code(self):
         user = self.create_user()

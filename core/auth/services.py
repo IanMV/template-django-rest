@@ -126,7 +126,9 @@ class SessionService:
 
     @staticmethod
     def get_active_sessions_with_current(user, token):
-        sessions = UserSession.objects.filter(user=user, is_active=True)
+        sessions = UserSession.objects.filter(user=user, is_active=True).order_by(
+            "-last_activity", "-created_at"
+        )
         current_access_jti = str(token["jti"])
 
         for session in sessions:

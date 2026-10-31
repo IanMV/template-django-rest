@@ -19,7 +19,7 @@ class CodeRequestRateLimitTests(ApiCase):
 
     def test_issuance_ip_cache_failure_fails_open(self):
         with patch(
-            "core.auth.rate_limit.cache.add", side_effect=[True, RuntimeError("down")]
+            "core.auth.rate_limit.cache.add", side_effect=[RuntimeError("down"), True]
         ):
             with self.assertLogs("core.auth.rate_limit", level="ERROR"):
                 response = self.client.post(
@@ -28,6 +28,33 @@ class CodeRequestRateLimitTests(ApiCase):
                     format="json",
                 )
         self.assertEqual(response.status_code, 200)
+
+    def test_ip_burst_throttle_does_not_consume_email_cooldown(self):
+        email = "burst@example.com"
+        # Seed IP burst throttle (ip key timeout 2s)
+        ip_digest = hashlib.sha256(b"127.0.0.1").hexdigest()
+        cache.set(f"code-request:password-reset:ip:{ip_digest}", True, timeout=2)
+
+        # Request fails on IP throttle
+        blocked = self.client.post(
+            "/api/password-reset/request/",
+            {"email": email},
+            format="json",
+            REMOTE_ADDR="127.0.0.1",
+        )
+        self.assertEqual(blocked.status_code, 429)
+
+        # Clear IP burst throttle to simulate waiting 2s
+        cache.delete(f"code-request:password-reset:ip:{ip_digest}")
+
+        # Retry should succeed because email cooldown was NOT consumed by the blocked attempt
+        allowed = self.client.post(
+            "/api/password-reset/request/",
+            {"email": email},
+            format="json",
+            REMOTE_ADDR="127.0.0.1",
+        )
+        self.assertEqual(allowed.status_code, 200)
 
     def test_same_scope_and_email_is_throttled_even_from_another_ip(self):
         email = "missing@example.com"

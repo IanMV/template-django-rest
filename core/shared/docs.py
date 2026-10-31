@@ -12,19 +12,15 @@ from core.shared.response_messages import (
     MSG_CODE_SENT,
     MSG_CODE_VALID,
     MSG_EMAIL_CHANGED,
-    MSG_EMAIL_IN_USE,
     MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN,
     MSG_INVALID_PASSWORD,
     MSG_LOGIN_SUCCESSFUL,
     MSG_LOGOUT_SUCCESSFUL,
-    MSG_NO_REFRESH_TOKEN_PROVIDED,
     MSG_PASSWORD_RESET,
     MSG_REFRESH_TOKENS_SUCCESSFUL,
     MSG_SERVICE_UNAVAILABLE,
-    MSG_SESSION_REVOKED_OR_INACTIVE,
     MSG_USER_CREATED,
     MSG_USER_DEACTIVATED,
-    MSG_USER_NOT_FOUND,
     MSG_USER_REVOKED_ALL_SESSIONS,
     MSG_USER_SESSION_DEACTIVATED,
     MSG_USER_SESSION_NOT_FOUND,
@@ -48,13 +44,6 @@ CodeIsValidSerializer = inline_serializer(
     "CodeIsValidSerializer",
     {
         "detail": CharField(default=MSG_CODE_VALID),
-    },
-)
-
-CodeIsInvalidSerializer = inline_serializer(
-    "CodeIsInvalidSerializer",
-    {
-        "code": CharField(default=MSG_CODE_INVALID),
     },
 )
 
@@ -95,15 +84,6 @@ CsrfForbiddenSerializer = inline_serializer(
     "CsrfForbiddenResponse",
     {
         "detail": CharField(),
-    },
-)
-
-NewEmailAlreadyExistsSerializer = inline_serializer(
-    "NewEmailAlreadyExistsSerializer",
-    fields={
-        "new_email": CharField(
-            default=MSG_EMAIL_IN_USE,
-        )
     },
 )
 
@@ -150,12 +130,6 @@ UserSessionNotFoundSerializer = inline_serializer(
     {"detail": CharField(default=MSG_USER_SESSION_NOT_FOUND)},
 )
 
-
-UserNotFoundSerializer = inline_serializer(
-    "UserNotFoundSerializer",
-    {"detail": CharField(default=MSG_USER_NOT_FOUND)},
-)
-
 CannotDeactivateCurrentSessionSerializer = inline_serializer(
     "CannotDeactivateCurrentSessionSerializer",
     {
@@ -163,17 +137,10 @@ CannotDeactivateCurrentSessionSerializer = inline_serializer(
     },
 )
 
-
 RefreshTokensSuccessfulSerializer = inline_serializer(
     "RefreshTokensSuccessfulSerializer",
     {
         "detail": CharField(default=MSG_REFRESH_TOKENS_SUCCESSFUL),
-    },
-)
-NoRefreshTokenProvidedSerializer = inline_serializer(
-    "NoRefreshTokenProvidedSerializer",
-    {
-        "detail": CharField(default=MSG_NO_REFRESH_TOKEN_PROVIDED),
     },
 )
 
@@ -182,13 +149,6 @@ InvalidOrExpiredRefreshTokenSerializer = inline_serializer(
     {
         "detail": CharField(default=MSG_INVALID_OR_EXPIRED_REFRESH_TOKEN),
         "code": CharField(required=False),
-    },
-)
-
-SessionRevokedOrInactiveSerializer = inline_serializer(
-    "SessionRevokedOrInactiveSerializer",
-    {
-        "detail": CharField(default=MSG_SESSION_REVOKED_OR_INACTIVE),
     },
 )
 

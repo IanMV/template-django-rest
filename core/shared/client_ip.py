@@ -12,10 +12,12 @@ def get_client_ip(request) -> str | None:
 
     count = settings.NUM_PROXIES
     if count > 0 and remote:
-        chain = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")
-        if len(chain) >= count:
-            try:
-                return str(ip_address(chain[-count].strip()))
-            except ValueError:
-                pass
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+        if forwarded:
+            chain = forwarded.split(",")
+            if len(chain) >= count:
+                try:
+                    return str(ip_address(chain[-count].strip()))
+                except ValueError:
+                    pass
     return remote

@@ -20,11 +20,9 @@ MSG_REFRESH_TOKENS_SUCCESSFUL = _("Refresh tokens successful.")
 # =====================================
 MSG_SERVICE_UNAVAILABLE = _("Service temporarily unavailable.")
 MSG_CODE_INVALID = _("Invalid or expired verification code.")
-MSG_EMAIL_ALREADY_EXIST = _("This account is already active.")
 MSG_EMAIL_IN_USE = _("This e-mail is already in use.")
 MSG_INVALID_PASSWORD = _("Invalid current password.")
 MSG_USER_SESSION_NOT_FOUND = _("Session not found.")
-MSG_USER_NOT_FOUND = _("User not found.")
 MSG_CANNOT_DEACTIVATE_CURRENT_SESSION = _(
     "You cannot deactivate your current session from here. Please use logout instead."
 )

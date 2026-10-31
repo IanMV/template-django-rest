@@ -1,7 +1,7 @@
 import logging
 import secrets
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from core.auth.rate_limit import limit_code_requests, require_current_password
@@ -78,8 +78,13 @@ class EmailChangeService:
                     raise serializers.ValidationError(
                         {"new_email": MSG_EMAIL_IN_USE}
                     )
-                user.email = change_code.new_email
-                user.save(update_fields=["email", "updated_at"])
+                try:
+                    user.email = change_code.new_email
+                    user.save(update_fields=["email", "updated_at"])
+                except IntegrityError:
+                    raise serializers.ValidationError(
+                        {"new_email": MSG_EMAIL_IN_USE}
+                    )
                 change_code.mark_used()
                 SessionService.revoke_all_sessions(user)
         if not valid:

@@ -1,6 +1,8 @@
 import logging
 import secrets
 
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 
@@ -66,6 +68,10 @@ class PasswordResetService:
             valid = reset_code is not None and reset_code.verify(code)
             if valid:
                 user = reset_code.user
+                try:
+                    validate_password(new_password, user=user)
+                except DjangoValidationError as exc:
+                    raise serializers.ValidationError({"new_password": list(exc.messages)}) from exc
                 user.set_password(new_password)
                 user.save(update_fields=["password", "updated_at"])
                 reset_code.mark_used()

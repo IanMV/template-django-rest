@@ -12,6 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 def limit_code_requests(scope: str, email: str, ip_address: str | None) -> None:
+    if ip_address:
+        ip_digest = hashlib.sha256(ip_address.encode()).hexdigest()
+        try:
+            if not cache.add(f"code-request:{scope}:ip:{ip_digest}", True, timeout=2):
+                raise Throttled(wait=2)
+        except Throttled:
+            raise
+        except Exception:
+            logger.exception("Code issuance IP throttle unavailable; continuing")
+
     email_digest = hashlib.sha256(email.strip().casefold().encode()).hexdigest()
     email_key = f"code-request:{scope}:email:{email_digest}"
     try:
@@ -22,16 +32,6 @@ def limit_code_requests(scope: str, email: str, ip_address: str | None) -> None:
     except Exception as exc:
         logger.exception("Code issuance email throttle unavailable")
         raise ServiceUnavailable() from exc
-
-    if ip_address:
-        ip_digest = hashlib.sha256(ip_address.encode()).hexdigest()
-        try:
-            if not cache.add(f"code-request:{scope}:ip:{ip_digest}", True, timeout=2):
-                raise Throttled(wait=2)
-        except Throttled:
-            raise
-        except Exception:
-            logger.exception("Code issuance IP throttle unavailable; continuing")
 
 
 def limit_login_attempts(email: str, ip_address: str | None) -> None:

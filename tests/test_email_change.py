@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.utils import timezone
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
@@ -212,6 +213,20 @@ class EmailChangeTests(ApiCase):
         self.assertIn("new_email", response.data)
         user.refresh_from_db()
         self.assertEqual(user.email, "person@example.com")
+
+    def test_confirm_handles_integrity_error_on_concurrent_email_claim(self):
+        user = self.create_user()
+        self.login(user)
+        code = self.request_code()
+        with patch.object(user, "save", side_effect=IntegrityError("duplicate key")):
+            with patch("core.models.user.User.save", side_effect=IntegrityError("duplicate key")):
+                response = self.client.post(
+                    self.base_url + "confirm/",
+                    {"code": code, "password": self.password},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("new_email", response.data)
 
     def test_five_wrong_verifications_exhaust_code(self):
         user = self.create_user()
