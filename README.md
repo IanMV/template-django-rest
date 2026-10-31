@@ -54,9 +54,11 @@ Cookie-based Django REST authentication API. It manages account registration, lo
 2. Run `docker compose up --build`.
 3. The `app` service runs migrations before serving on `http://localhost:8000`.
 
-Compose starts `app`, PostgreSQL, and Redis. PostgreSQL and Redis have persistent named volumes and health checks; the app waits for both to report healthy. Redis is private to the Compose network and uses `redis://` accordingly.
+Compose starts `app`, PostgreSQL, and Redis. PostgreSQL and Redis have persistent named volumes and health checks; the app waits for both to report healthy. Redis is private to the Compose network and uses `redis://` accordingly. `.dockerignore` excludes local secrets, virtual environments, tests, and repository metadata from the image build context.
 
-**To confirm:** this repository has no production WSGI/ASGI server dependency. The Compose app uses Django `runserver --noreload` for an integrated development environment, not a production HTTP deployment. Choose and configure the production server and reverse proxy before deployment.
+**To confirm:** this repository has no production WSGI/ASGI server dependency. The Compose app uses Django `runserver --noreload` for an integrated development environment, not a production HTTP deployment. It also does not start a Celery worker or Beat; transactional emails and scheduled cleanup require separate processes using the same PostgreSQL and Redis services. Choose and configure the production server, reverse proxy, worker, and Beat deployment before production use.
+
+**To confirm:** the sample Compose environment disables HTTPS redirect for local health checks, but production cookies remain secure and will not support browser login over plain HTTP. Terminate HTTPS at a reverse proxy before using browser authentication.
 
 ## To confirm
 
