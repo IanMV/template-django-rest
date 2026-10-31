@@ -134,6 +134,9 @@ class RefreshTests(ApiCase):
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post("/api/refresh/")
         self.assertEqual(response.status_code, 401)
+        self.client.cookies["refresh_token"] = "invalid"
+        invalid = self.client.post("/api/refresh/")
+        self.assertEqual(response.data, invalid.data)
         session.refresh_from_db()
         self.assertFalse(session.is_active)
         self.client.cookies["refresh_token"] = current
