@@ -52,14 +52,18 @@ class BehaviorHelpers:
 
 
 @override_settings(
-    MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+    MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+    SECRET_KEY="django-insecure-test-key-with-strictly-more-than-thirty-two-bytes-12345",
 )
 class ApiCase(BehaviorHelpers, TestCase):
     pass
 
 
 @override_settings(
-    MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
+    MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},
+    PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+    SECRET_KEY="django-insecure-test-key-with-strictly-more-than-thirty-two-bytes-12345",
 )
 class ApiTransactionCase(BehaviorHelpers, TransactionTestCase):
     pass
