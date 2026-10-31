@@ -7,11 +7,19 @@ from django.contrib.auth.models import (
     PermissionsMixin,
 )
 from django.db import models
+from django.db.models.functions import Lower, Trim
 from django.utils.translation import gettext_lazy as _
 
 
 class UserManager(BaseUserManager):
     use_in_migrations = True
+
+    @classmethod
+    def normalize_email(cls, email):
+        return email.strip().lower() if email else ""
+
+    def get_by_natural_key(self, username):
+        return self.get(email=self.normalize_email(username))
 
     def _create_user(self, email, password, **extra_fields):
         if not email:
@@ -95,6 +103,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = _("user")
         verbose_name_plural = _("users")
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(email=Lower(Trim("email"))),
+                name="core_user_email_canonical",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        self.email = UserManager.normalize_email(self.email)
+
+    def save(self, *args, **kwargs):
+        self.email = UserManager.normalize_email(self.email)
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.name} <{self.email}>" if self.name else self.email

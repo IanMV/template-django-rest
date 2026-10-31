@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import authenticate
 from django.core.cache import cache, caches
-from django.db import connection, connections
+from django.db import IntegrityError, connection, connections
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed, Throttled
@@ -25,6 +25,22 @@ from tests.base import ApiTransactionCase
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL/Redis settings")
 class ProductionConcurrencyTests(ApiTransactionCase):
+    def test_concurrent_case_variant_emails_create_one_account(self):
+        ready = Barrier(2)
+
+        def register():
+            ready.wait(timeout=10)
+            try:
+                User.objects.create_user(
+                    "Concurrent@EXAMPLE.COM", self.password, name="Concurrent"
+                )
+            except IntegrityError:
+                return "duplicate"
+            return "created"
+
+        self.assertEqual(sorted(self.concurrent(register)), ["created", "duplicate"])
+        self.assertEqual(User.objects.filter(email="concurrent@example.com").count(), 1)
+
     def test_logout_and_refresh_revoke_session_in_both_orders(self):
         from rest_framework_simplejwt.serializers import TokenRefreshSerializer
         from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken

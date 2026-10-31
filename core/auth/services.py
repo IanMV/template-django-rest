@@ -258,6 +258,7 @@ class AuthService:
     def login_user(
         email, password, user_agent_string, ip_address, raw_access_token=None, remember_me=False
     ):
+        email = User.objects.normalize_email(email)
         limit_login_attempts(email, ip_address)
         previous_session = None
         if raw_access_token:

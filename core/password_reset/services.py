@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class PasswordResetService:
     @staticmethod
     def request_reset(email: str, ip_address: str | None = None) -> None:
+        email = User.objects.normalize_email(email)
         limit_code_requests("password-reset", email, ip_address)
         user = User.objects.filter(email=email, is_active=True).first()
         if not user:
@@ -50,6 +51,7 @@ class PasswordResetService:
 
     @staticmethod
     def verify_code(email: str, code: str) -> bool:
+        email = User.objects.normalize_email(email)
         with transaction.atomic():
             user = User.objects.select_for_update(no_key=True).filter(
                 email=email, is_active=True
@@ -67,6 +69,7 @@ class PasswordResetService:
 
     @staticmethod
     def confirm_reset(email: str, code: str, new_password: str) -> User:
+        email = User.objects.normalize_email(email)
         with transaction.atomic():
             user = User.objects.select_for_update(no_key=True).filter(
                 email=email, is_active=True

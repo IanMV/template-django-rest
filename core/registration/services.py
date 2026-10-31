@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class RegistrationService:
     @staticmethod
     def request_registration(email: str, ip_address: str | None = None) -> None:
+        email = User.objects.normalize_email(email)
         limit_code_requests("registration", email, ip_address)
         try:
             with transaction.atomic():
@@ -65,6 +66,7 @@ class RegistrationService:
 
     @staticmethod
     def verify_code(email: str, code: str) -> bool:
+        email = User.objects.normalize_email(email)
         with transaction.atomic():
             user = User.objects.select_for_update(no_key=True).filter(
                 email=email, is_active=False, password="", is_staff=False, is_superuser=False
@@ -81,6 +83,7 @@ class RegistrationService:
 
     @staticmethod
     def confirm_registration(email: str, code: str, name: str, password: str) -> None:
+        email = User.objects.normalize_email(email)
         with transaction.atomic():
             user = User.objects.select_for_update(no_key=True).filter(
                 email=email, is_active=False, password="", is_staff=False, is_superuser=False

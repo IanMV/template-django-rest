@@ -25,6 +25,7 @@ class EmailChangeService:
     def request_change(
         user: User, new_email: str, current_password: str, ip_address: str | None = None, request=None
     ) -> None:
+        new_email = User.objects.normalize_email(new_email)
         require_current_password(user, current_password, request=request, action="email_change_request")
         limit_code_requests("email-change", new_email, ip_address)
         if User.objects.filter(email=new_email).exists():
@@ -82,6 +83,7 @@ class EmailChangeService:
             )
             valid = change_code is not None and change_code.verify(code)
             if valid:
+                change_code.new_email = User.objects.normalize_email(change_code.new_email)
                 if (
                     User.objects.filter(email=change_code.new_email)
                     .exclude(pk=user.pk)
