@@ -2,11 +2,17 @@ import importlib
 from contextlib import contextmanager
 from unittest.mock import patch
 
+from django.core import mail
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
 
 class ProductionSettingsTests(SimpleTestCase):
+    def test_smtp_backend_receives_finite_timeout(self):
+        with self.production_settings() as configured:
+            with self.settings(MAILERS=configured.MAILERS):
+                self.assertEqual(mail.mailers["default"].timeout, 10)
+
     @contextmanager
     def production_settings(self, **overrides):
         values = {
