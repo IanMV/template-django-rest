@@ -28,6 +28,11 @@ class PasswordResetService:
 
         try:
             with transaction.atomic():
+                user = User.objects.select_for_update(no_key=True).filter(
+                    pk=user.pk, email=email, is_active=True
+                ).first()
+                if user is None:
+                    return
                 PasswordReset.objects.filter(user=user).delete()
                 reset_code = PasswordReset(user=user)
                 reset_code.set_code(raw_code)
@@ -46,9 +51,12 @@ class PasswordResetService:
     @staticmethod
     def verify_code(email: str, code: str) -> bool:
         with transaction.atomic():
+            user = User.objects.select_for_update(no_key=True).filter(
+                email=email, is_active=True
+            ).first()
             reset_code = (
                 PasswordReset.objects.select_for_update()
-                .filter(user__email=email, user__is_active=True)
+                .filter(user=user)
                 .first()
             )
             valid = reset_code is not None and reset_code.verify(code)
@@ -60,14 +68,16 @@ class PasswordResetService:
     @staticmethod
     def confirm_reset(email: str, code: str, new_password: str) -> User:
         with transaction.atomic():
+            user = User.objects.select_for_update(no_key=True).filter(
+                email=email, is_active=True
+            ).first()
             reset_code = (
                 PasswordReset.objects.select_for_update()
-                .filter(user__email=email, user__is_active=True)
+                .filter(user=user)
                 .first()
             )
             valid = reset_code is not None and reset_code.verify(code)
             if valid:
-                user = reset_code.user
                 try:
                     validate_password(new_password, user=user)
                 except DjangoValidationError as exc:

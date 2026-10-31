@@ -58,6 +58,11 @@ def daily_maintenance_purge_task():
         .values_list("pk", flat=True)[:BATCH_SIZE]
     ):
         with transaction.atomic():
+            list(
+                User.objects.select_for_update(no_key=True)
+                .filter(sessions__pk__in=ids)
+                .order_by("pk")
+            )
             rows = list(
                 UserSession.objects.select_for_update()
                 .filter(pk__in=ids)

@@ -25,6 +25,16 @@ from core.shared.response_messages import (
 )
 
 
+def require_unchanged_user(previous, current):
+    if (
+        current is None
+        or not current.is_active
+        or current.password != previous.password
+        or current.email != previous.email
+    ):
+        raise AuthenticationFailed()
+
+
 class SessionService:
     @staticmethod
     def refresh_expiry(session, now):
@@ -63,6 +73,7 @@ class SessionService:
     def _rotate_refresh(old_token, old_jti, refresh_token_str, serializer_factory, request):
         expired = False
         with transaction.atomic():
+            User.objects.select_for_update(no_key=True).get(pk=old_token["user_id"])
             session = (
                 UserSession.objects.select_for_update()
                 .filter(refresh_jti=old_jti, is_active=True)
@@ -144,6 +155,7 @@ class SessionService:
         ).exists():
             return
         with transaction.atomic():
+            User.objects.select_for_update(no_key=True).get(pk=token["user_id"])
             session = (
                 UserSession.objects.select_for_update()
                 .filter(pk=session_id, user_id=token.get("user_id"), is_active=True)
@@ -192,6 +204,7 @@ class SessionService:
     @staticmethod
     def deactivate_session(user, session_id):
         with transaction.atomic():
+            User.objects.select_for_update(no_key=True).get(pk=user.pk)
             session = (
                 UserSession.objects.select_for_update()
                 .filter(id=session_id, user=user)
@@ -213,6 +226,7 @@ class SessionService:
     @staticmethod
     def deactivate_session_by_access_jti(user, access_jti):
         with transaction.atomic():
+            User.objects.select_for_update(no_key=True).get(pk=user.pk)
             session = (
                 UserSession.objects.select_for_update()
                 .filter(access_jti=access_jti, user=user)
@@ -233,6 +247,7 @@ class SessionService:
     @staticmethod
     def revoke_all_sessions(user):
         with transaction.atomic():
+            User.objects.select_for_update(no_key=True).get(pk=user.pk)
             tokens = OutstandingToken.objects.filter(user=user)
             BlacklistedToken.objects.bulk_create(
                 [BlacklistedToken(token=token) for token in tokens],
@@ -277,13 +292,23 @@ class AuthService:
 
         if not user or not user.is_active:
             raise AuthenticationFailed()
-        refresh = RefreshToken.for_user(user)
-        access = refresh.access_token
         user_agent = parse(user_agent_string)
-        jti_refresh = str(refresh.get("jti"))
 
         with transaction.atomic():
-            User.objects.select_for_update().get(pk=user.pk)
+            user_ids = [user.pk]
+            if previous_session:
+                user_ids.append(previous_session.user_id)
+            locked_users = list(
+                User.objects.select_for_update(no_key=True)
+                .filter(pk__in=user_ids)
+                .order_by("pk")
+            )
+            current = next((item for item in locked_users if item.pk == user.pk), None)
+            require_unchanged_user(user, current)
+            user = current
+            refresh = RefreshToken.for_user(user)
+            access = refresh.access_token
+            jti_refresh = str(refresh["jti"])
             candidate_ids = set(
                 UserSession.objects.select_for_update()
                 .filter(

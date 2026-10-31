@@ -3,9 +3,10 @@ import secrets
 
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
 
 from core.auth.rate_limit import limit_code_requests, require_current_password
-from core.auth.services import SessionService
+from core.auth.services import SessionService, require_unchanged_user
 from core.models.email_change import EmailChange
 from core.models.user import User
 from core.shared.email_token_sender import send_email_token
@@ -33,6 +34,9 @@ class EmailChangeService:
         raw_code = f"{secrets.randbelow(1000000):06d}"
         try:
             with transaction.atomic():
+                current = User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+                require_unchanged_user(user, current)
+                user = current
                 EmailChange.objects.filter(user=user).delete()
                 change_code = EmailChange(user=user, new_email=new_email)
                 change_code.set_code(raw_code)
@@ -45,6 +49,8 @@ class EmailChangeService:
                         raise ServiceUnavailable() from None
 
                 transaction.on_commit(send)
+        except AuthenticationFailed:
+            raise
         except Exception as exc:
             logger.exception("Email change code issuance failed")
             raise ServiceUnavailable() from exc
@@ -52,6 +58,8 @@ class EmailChangeService:
     @staticmethod
     def verify_code(user: User, code: str) -> bool:
         with transaction.atomic():
+            current = User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+            require_unchanged_user(user, current)
             change_code = (
                 EmailChange.objects.select_for_update().filter(user=user).first()
             )
@@ -65,6 +73,9 @@ class EmailChangeService:
         require_current_password(user, current_password, request=request, action="email_change_confirm")
 
         with transaction.atomic():
+            current = User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+            require_unchanged_user(user, current)
+            user = current
             change_code = (
                 EmailChange.objects.select_for_update().filter(user=user).first()
             )

@@ -12,7 +12,9 @@ from rest_framework.exceptions import AuthenticationFailed, Throttled
 
 from core.auth.rate_limit import require_current_password
 from core.auth.services import AuthService, SessionService
-from core.models import UserSession
+from core.email_change.services import EmailChangeService
+from core.models import EmailChange, User, UserSession
+from core.users.services import UserService
 from tests.base import ApiTransactionCase
 
 
@@ -97,3 +99,79 @@ class ProductionConcurrencyTests(ApiTransactionCase):
                 sorted(self.concurrent(reauthenticate, 5)), [400] + [429] * 4
             )
         self.assertEqual(cache.get(key), 9)
+
+    def test_login_rejects_state_changed_after_authentication(self):
+        from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+
+        for state in ("password", "inactive"):
+            with self.subTest(state=state):
+                user = self.create_user(email=f"login-{state}@example.com")
+
+                def authenticated(**credentials):
+                    result = authenticate(**credentials)
+                    if state == "password":
+                        changed = User.objects.get(pk=user.pk)
+                        changed.set_password("ChangedPass!7395")
+                        changed.save(update_fields=["password"])
+                    else:
+                        User.objects.filter(pk=user.pk).update(is_active=False)
+                    return result
+
+                with patch(
+                    "core.auth.services.authenticate", side_effect=authenticated
+                ):
+                    with self.assertRaises(AuthenticationFailed):
+                        AuthService.login_user(
+                            user.email, self.password, "TestBrowser", "127.0.0.1"
+                        )
+                self.assertFalse(UserSession.objects.filter(user=user).exists())
+                self.assertFalse(OutstandingToken.objects.filter(user=user).exists())
+
+    def test_reauthentication_rejects_state_changed_before_mutation(self):
+        for action in ("request", "confirm", "deactivate"):
+            for state in ("password", "inactive"):
+                with self.subTest(action=action, state=state):
+                    user = self.create_user(email=f"{action}-{state}@example.com")
+                    change = EmailChange(user=user, new_email="new@example.com")
+                    change.set_code("123456")
+                    change.save()
+
+                    def reauthenticated(*args, **kwargs):
+                        require_current_password(*args, **kwargs)
+                        if state == "password":
+                            changed = User.objects.get(pk=user.pk)
+                            changed.set_password("ChangedPass!7395")
+                            changed.save(update_fields=["password"])
+                        else:
+                            User.objects.filter(pk=user.pk).update(is_active=False)
+
+                    module = (
+                        "core.users.services"
+                        if action == "deactivate"
+                        else "core.email_change.services"
+                    )
+                    with patch(
+                        f"{module}.require_current_password",
+                        side_effect=reauthenticated,
+                    ):
+                        with self.assertRaises(AuthenticationFailed):
+                            if action == "request":
+                                EmailChangeService.request_change(
+                                    user,
+                                    f"other-{action}-{state}@example.com",
+                                    self.password,
+                                )
+                            elif action == "confirm":
+                                EmailChangeService.confirm_change(
+                                    user, "123456", self.password
+                                )
+                            else:
+                                UserService.deactivate_user(user, self.password)
+                    change.refresh_from_db()
+                    self.assertFalse(change.used)
+                    self.assertEqual(change.new_email, "new@example.com")
+                    current = User.objects.get(pk=user.pk)
+                    self.assertEqual(current.email, user.email)
+                    if state == "password":
+                        self.assertTrue(current.is_active)
+                        self.assertTrue(current.check_password("ChangedPass!7395"))

@@ -23,6 +23,7 @@ class RegistrationService:
                 user, created = User.objects.get_or_create(
                     email=email, defaults={"is_active": False}
                 )
+                user = User.objects.select_for_update(no_key=True).get(pk=user.pk)
                 if not created and user.is_active:
                     def notify():
                         try:
@@ -63,9 +64,12 @@ class RegistrationService:
     @staticmethod
     def verify_code(email: str, code: str) -> bool:
         with transaction.atomic():
+            user = User.objects.select_for_update(no_key=True).filter(
+                email=email, is_active=False
+            ).first()
             verification = (
                 EmailVerification.objects.select_for_update()
-                .filter(user__email=email, user__is_active=False)
+                .filter(user=user)
                 .first()
             )
             valid = verification is not None and verification.verify(code)
@@ -76,14 +80,16 @@ class RegistrationService:
     @staticmethod
     def confirm_registration(email: str, code: str, name: str, password: str) -> None:
         with transaction.atomic():
+            user = User.objects.select_for_update(no_key=True).filter(
+                email=email, is_active=False
+            ).first()
             verification = (
                 EmailVerification.objects.select_for_update()
-                .filter(user__email=email, user__is_active=False)
+                .filter(user=user)
                 .first()
             )
             valid = verification is not None and verification.verify(code)
             if valid:
-                user = verification.user
                 user.name = name
                 user.set_password(password)
                 user.is_active = True
