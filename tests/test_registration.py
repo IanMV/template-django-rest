@@ -15,7 +15,9 @@ class RegistrationTests(ApiCase):
     base_url = "/api/registration/"
 
     def request_code(self):
-        response = self.post_with_commit(self.base_url + "request/", {"email": self.email})
+        response = self.post_with_commit(
+            self.base_url + "request/", {"email": self.email}
+        )
         self.assertEqual(response.status_code, 201, response.data)
         return self.email_code()
 
@@ -39,7 +41,9 @@ class RegistrationTests(ApiCase):
         second = self.post_with_commit(
             self.base_url + "request/", {"email": self.email}
         )
-        self.assertEqual((first.status_code, first.data), (second.status_code, second.data))
+        self.assertEqual(
+            (first.status_code, first.data), (second.status_code, second.data)
+        )
 
     def test_active_account_cannot_verify_lingering_code(self):
         code = self.request_code()
@@ -52,7 +56,9 @@ class RegistrationTests(ApiCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(str(response.data["code"]), "Invalid or expired verification code.")
+        self.assertEqual(
+            str(response.data["code"]), "Invalid or expired verification code."
+        )
 
     def test_verify_does_not_consume_and_confirm_creates_active_user(self):
         code = self.request_code()
@@ -168,6 +174,47 @@ class RegistrationTests(ApiCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertFalse(User.objects.get(email=self.email).is_active)
+
+    def test_disabled_accounts_cannot_register_even_with_lingering_codes(self):
+        for index, privileges in enumerate(
+            ({}, {"is_staff": True}, {"is_staff": True, "is_superuser": True})
+        ):
+            with self.subTest(privileges=privileges):
+                user = self.create_user(
+                    email=f"disabled-{index}@example.com", is_active=False, **privileges
+                )
+                previous_password = user.password
+                verification = EmailVerification(user=user)
+                verification.set_code("123456")
+                verification.save()
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.client.post(
+                        self.base_url + "request/",
+                        {"email": user.email},
+                        format="json",
+                        REMOTE_ADDR=f"127.0.0.{index + 1}",
+                    )
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(
+                    response.data, {"detail": "If the e-mail exists, a code was sent."}
+                )
+                self.assertFalse(mail.outbox)
+                for endpoint in ("verify/", "confirm/"):
+                    payload = {"email": user.email, "code": "123456"}
+                    if endpoint == "confirm/":
+                        payload.update(
+                            name="Replacement", password="ReplacementPass!7395"
+                        )
+                    rejected = self.client.post(
+                        self.base_url + endpoint, payload, format="json"
+                    )
+                    self.assertEqual(rejected.status_code, 400)
+                user.refresh_from_db()
+                verification.refresh_from_db()
+                self.assertFalse(user.is_active)
+                self.assertEqual(user.password, previous_password)
+                self.assertFalse(verification.used)
+
 
 class RegistrationDeliveryFailureTests(ApiTransactionCase):
     def test_delivery_failure_returns_503_and_rolls_back_new_user(self):

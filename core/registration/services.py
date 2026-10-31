@@ -38,6 +38,8 @@ class RegistrationService:
 
                     transaction.on_commit(notify)
                     return
+                if user.password or user.is_staff or user.is_superuser:
+                    return
                 raw_code = f"{secrets.randbelow(1000000):06d}"
                 EmailVerification.objects.filter(user=user).delete()
                 verification = EmailVerification(user=user)
@@ -65,7 +67,7 @@ class RegistrationService:
     def verify_code(email: str, code: str) -> bool:
         with transaction.atomic():
             user = User.objects.select_for_update(no_key=True).filter(
-                email=email, is_active=False
+                email=email, is_active=False, password="", is_staff=False, is_superuser=False
             ).first()
             verification = (
                 EmailVerification.objects.select_for_update()
@@ -81,7 +83,7 @@ class RegistrationService:
     def confirm_registration(email: str, code: str, name: str, password: str) -> None:
         with transaction.atomic():
             user = User.objects.select_for_update(no_key=True).filter(
-                email=email, is_active=False
+                email=email, is_active=False, password="", is_staff=False, is_superuser=False
             ).first()
             verification = (
                 EmailVerification.objects.select_for_update()
