@@ -2,7 +2,7 @@
 
 > **Target Audience:** Autonomous AI coding agents & system architects.  
 > **Repository:** `template-django-rest`  
-> **Core Constraint:** Subordinate to [AGENTS.md](../AGENTS.md). Strict planning only. Preserve cookie-only auth, CSRF enforcement, `core/models/` entity encapsulation, and `ATOMIC_REQUESTS=False`.
+> **Core Constraint:** Subordinate to [AGENTS.md](../AGENTS.md). Planning only except completed Feature 7. Preserve cookie-only auth, CSRF enforcement, `core/models/` entity encapsulation, and `ATOMIC_REQUESTS=False`.
 
 ---
 
@@ -249,18 +249,12 @@ flowchart TD
 
 ---
 
-### Feature 7: Server-Side Redis Sessions
+### Feature 7: Server-Side Redis Sessions — DONE
 
-- **Objective:** Eliminate database connection exhaustion caused by synchronous SQL lookups on `UserSession` in `CustomAuthentication` on every API request.
-- **Architecture:**
-  1. On login: Store session ID in Redis with TTL matching token expiration:
-     ```python
-     redis_client.setex(f"session:{jti_access}", int(access_lifetime.total_seconds()), session_id)
-     redis_client.sadd(f"user:{user.id}:sessions", session_id)
-     ```
-  2. In `CustomAuthentication`: Replace SQL `UserSession.objects.filter(...)` with Redis lookup `redis_client.exists(f"session:{jti}")`.
-  3. On refresh: Invalidate old JTI and insert new JTI with fresh TTL.
-  4. On logout or mass revocation: Delete keys from Redis for instantaneous sub-millisecond invalidation.
+- **Contract:** `UserSession` in DB is authoritative; positive-only cache-aside on `sessions` alias. Access/refresh JWTs contain `session_id`; legacy access tokens without it use SQL. Key `session:{session_id}` holds access JTI and user ID. On miss/cache error, check DB; log cache errors; populate only a valid binding. User lookup still queries SQL.
+- **Configuration:** Dev/test locmem `sessions`; prod native RedisCache uses `REDIS_URL` DB index + 1 and distinct `KEY_PREFIX=sessions`. Set `SESSION_CACHE_TTL=60` seconds by default; cap each entry by access lifetime and remaining token expiry. Redis must support multiple DB indexes.
+- **Invalidation:** Logout, revoke-all, self-deactivation, password reset, confirmed email change, other-session DELETE, login replacement, and refresh rotation schedule cache deletion with `transaction.on_commit()`; mass revoke reads IDs before update. Failed invalidation leaves bounded staleness for at most TTL, not immediate revocation. No per-user sets, raw Redis client, or django-redis dependency.
+- **Verification:** SQL query count, cache miss/failure, invalid binding, legacy token upgrade, and revocation covered by `tests/test_session_cache.py`; full `pdm run verify` passed with 85 tests. Validate Redis multi-DB support, locking, and invalidation behavior in the production topology.
 
 ---
 
