@@ -1,52 +1,145 @@
+name: template-auth-prod
+x-app: &app
+  build: .
+  image: template-auth-prod:${IMAGE_TAG:-local}
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  environment:
+    DJANGO_SETTINGS_MODULE: app.settings.prod
+    SECRET_KEY: ${SECRET_KEY:?Generate a production SECRET_KEY}
+    ALLOWED_HOSTS: ${ALLOWED_HOSTS:?Set the public hostname and localhost}
+    CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:?Set the public HTTPS origin}
+    DATABASE_URL: ${DATABASE_URL:?Set the application PostgreSQL URL}
+    REDIS_URL: ${REDIS_URL:?Set the authenticated Redis URL}
+    NUM_PROXIES: ${NUM_PROXIES:-1}
+    TRUST_PROXY_HEADERS: "true"
+    EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+    EMAIL_HOST: ${EMAIL_HOST:?Set the SMTP hostname}
+    EMAIL_PORT: ${EMAIL_PORT:-587}
+    EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+    EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+    EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+    EMAIL_USE_SSL: ${EMAIL_USE_SSL:-false}
+    DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:?Set a verified sender address}
+    AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
+    WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+
 services:
-  app:
-    build: .
-    command: >-
-      sh -c 'pdm run python manage.py migrate --noinput && exec pdm run python manage.py runserver 0.0.0.0:8000 --noreload'
-    env_file: .env
-    environment:
-      DJANGO_SETTINGS_MODULE: app.settings.prod
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379/0
-      SECURE_SSL_REDIRECT: "${SECURE_SSL_REDIRECT:-false}"
-    ports:
-      - "${APP_PORT:-8000}:8000"
+  release:
+    <<: *app
+    restart: "no"
+    command: sh -ec 'python manage.py migrate --noinput; python manage.py collectstatic --noinput'
+    volumes:
+      - static_data:/app/staticfiles
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  app:
+    <<: *app
+    volumes:
+      - static_data:/app/staticfiles:ro
+    depends_on:
+      release: {condition: service_completed_successfully}
     healthcheck:
-      test: ["CMD", "python", "-c", "from urllib.request import urlopen; assert urlopen('http://127.0.0.1:8000/api/login/').status == 204"]
-      interval: 10s
+      test: ["CMD", "python", "-c", "from urllib.request import Request, urlopen; assert urlopen(Request('http://127.0.0.1:8000/api/login/', headers={'Host': 'localhost', 'X-Forwarded-Proto': 'https'}), timeout=3).status == 204"]
+      interval: 30s
       timeout: 5s
-      retries: 6
-      start_period: 15s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "app", "worker", "--loglevel=INFO", "--concurrency=${CELERY_CONCURRENCY:-2}"]
+    depends_on:
+      release: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app inspect ping --destination celery@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  beat:
+    <<: *app
+    command: celery -A app beat --loglevel=INFO --schedule=/var/lib/celery/schedule --pidfile=/tmp/celerybeat.pid
+    volumes:
+      - beat_data:/var/lib/celery
+    depends_on:
+      release: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; from pathlib import Path; os.kill(int(Path('/tmp/celerybeat.pid').read_text()), 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  proxy:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx/${NGINX_CONFIG:-direct.conf}:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/snippets:/etc/nginx/snippets:ro
+      - type: bind
+        source: ${TLS_DIR:-./deploy/tls}
+        target: /etc/nginx/tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - static_data:/var/lib/app/static:ro
+    depends_on:
+      app: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-template_auth}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the PostgreSQL administrator password}
+      APP_DB_USER: ${APP_DB_USER:-template_auth}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set the PostgreSQL application password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init-app-user.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7.4-alpine
+    restart: unless-stopped
+    user: redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set the Redis password}
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\" --maxmemory ${REDIS_MAXMEMORY:-256mb} --maxmemory-policy noeviction"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
 
 volumes:
   postgres_data:
   redis_data:
+  static_data:
+  beat_data:

@@ -5,3 +5,9 @@ db.sqlite3
 .venv
 .vscode/
 .ruff_cache/
+.env.*
+!.env.example
+!.env.*.example
+staticfiles/
+backups/
+deploy/tls/

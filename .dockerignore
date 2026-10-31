@@ -4,10 +4,16 @@
 .ruff_cache/
 __pycache__/
 *.py[cod]
-.env
+.env*
+.pdm-python
 db.sqlite3
 docs/
 tests/
 media/
 static/
 AGENTS.md
+staticfiles/
+backups/
+deploy/tls/
+*.pem
+*.key
