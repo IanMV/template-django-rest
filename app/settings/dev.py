@@ -5,7 +5,10 @@ from .base import *  # noqa: F403
 DEBUG = True
 DEBUG_PROPAGATE_EXCEPTIONS = False
 ALLOWED_HOSTS = []
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-dev-fallback-secret-key-with-at-least-thirty-two-bytes-12345",
+)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
