@@ -13,6 +13,7 @@
 - Keep models in `core/models/`; never move them.
 - Routes: `app/urls.py`; shared docs/routes: `core/shared/`; feature logic: feature `services.py`; session views: `core/auth/session_views.py`.
 - Cross-feature imports: `core.models`, `core.shared`, public `core.auth/{services,authenticate,cookies,rate_limit}`, `core.audit.services` only.
+- Manual test UI: `core/shared/manual.py`, `core/templates/manual/`, `core/static/manual/`; gate on `DEBUG`, use same-origin requests, never bypass API auth or store tokens.
 - Preserve route order/names, API schemas/statuses, CSRF, cookie names/paths, and response contracts.
 
 ## Security conventions

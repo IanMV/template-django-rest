@@ -76,6 +76,8 @@ Esta aplicação cuida do cadastro, entrada, recuperação de senha, troca de e-
 
 014.RF A aplicação executa uma manutenção diária para remover cadastros abandonados, sessões vencidas e, quando configurado, registros antigos de auditoria. (Dados: horário 03:00; fuso America/Sao_Paulo; prazo de retenção de auditoria;)
 
+015.RF A pessoa desenvolvedora pode testar os endpoints da API em páginas com formulários simples, sem copiar tokens. As páginas separam acesso e sessões, cadastro e recuperação, e conta e equipe. O navegador envia os cookies; a página prepara a proteção CSRF e mostra o status e o conteúdo da última resposta. Os botões executam ações reais, por isso devem ser usados com contas de teste. (Dados: comando `pdm run dev`; endereço `http://127.0.0.1:8000/manual/`; JavaScript habilitado; códigos recebidos por e-mail ou mostrados no terminal de desenvolvimento;)
+
 ## Requisitos não funcionais (RNF)
 
 001.RNF Operações sensíveis conferem novamente o estado da conta antes de alterar dados ou criar sessão. (Dados: conta ativa; senha atual; e-mail atual; bloqueio de banco de dados;)
@@ -103,3 +105,5 @@ Esta aplicação cuida do cadastro, entrada, recuperação de senha, troca de e-
 012.RNF O ambiente em contêiner fornecido não é uma implantação web de produção. A aplicação usa o servidor de desenvolvimento e depende de HTTPS externo para autenticação em navegador. (Dados: servidor web de produção; proxy HTTPS; **a confirmar** a escolha desses componentes;)
 
 013.RNF A leitura dos registros de auditoria pela aplicação não impede alteração direta no banco de dados. (Dados: permissões do banco; política de retenção; **a confirmar** responsabilidade legal e configuração de escrita imutável;)
+
+014.RNF As páginas de teste manual ficam indisponíveis fora do modo de desenvolvimento, não guardam tokens no armazenamento do navegador e não substituem as permissões nem os limites da API. Operações destrutivas pedem confirmação; senhas são apagadas dos campos depois do envio. O painel administrativo e a documentação podem ser abertos pelos links dessas páginas. (Dados: configuração `DEBUG` ativa; páginas `/manual/auth/`, `/manual/codes/` e `/manual/account/`; cookies da própria aplicação;)
