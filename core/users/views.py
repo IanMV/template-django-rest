@@ -1,4 +1,6 @@
 from django.contrib.auth import logout
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
@@ -26,6 +28,7 @@ from core.users.serializers import DeactivateSelfSerializer, UserListRetrieveSer
 from core.users.services import UserService
 
 
+@method_decorator(never_cache, name="dispatch")
 class UserMeView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -50,6 +53,7 @@ class UserListPagination(PageNumberPagination):
     max_page_size = 100
 
 
+@method_decorator(never_cache, name="dispatch")
 class UserListView(APIView):
     permission_classes = [IsAdminUser]
     pagination_class = UserListPagination

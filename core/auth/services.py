@@ -1,10 +1,6 @@
-from datetime import timedelta
-
-from django.conf import settings
 from django.contrib.auth import authenticate, login
 from django.db import transaction
 from django.db.models import F
-from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 
 from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
@@ -41,9 +37,6 @@ class AuthService:
             current = User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
             require_unchanged_user(user, current)
             login(request, current, backend=user.backend)
-            request.session.set_expiry(
-                timezone.now() + timedelta(seconds=settings.SESSION_COOKIE_AGE)
-            )
             request.session.save()
 
         reset_login_attempts(email, ip_address)
