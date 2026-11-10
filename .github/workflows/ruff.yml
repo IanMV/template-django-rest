@@ -20,9 +20,9 @@ jobs:
       - name: Check Python formatting
         run: pdm run format --check
       - name: Check migrations
-        run: pdm run migrations-check --settings=tests.settings
+        run: pdm run migrations-check
       - name: Validate OpenAPI schema
-        run: pdm run schema-check --settings=tests.settings
+        run: pdm run schema-check
       - name: Test HTTP and account flows
         run: pdm run test
 
@@ -50,4 +50,4 @@ jobs:
       - name: Install locked dependencies
         run: pdm sync -G lint
       - name: Test PostgreSQL transactions and concurrency
-        run: pdm run python manage.py test --settings=tests.settings_integration --noinput
+        run: pdm run test:postgres

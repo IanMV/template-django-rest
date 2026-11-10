@@ -80,6 +80,8 @@ Requisitos: **Python 3.14 e PDM**. No caminho mínimo, o projeto usa SQLite e en
 
 > Os comandos abaixo são para uma instalação nova. Se você já tem dados de uma versão anterior, leia [Atualizar uma instalação antiga](#8-atualizar-uma-instalação-antiga) antes de aplicar migrações.
 
+Antes de executar os comandos locais ou o Compose, prepare manualmente um arquivo `.env` na raiz do repositório, sem versioná-lo. Os scripts abaixo exigem que esse arquivo exista. No desenvolvimento mínimo ele pode ficar vazio: SQLite, e-mail de terminal e origens locais já estão definidos em `app/settings/dev.py`. Para produção, preencha as variáveis da [etapa 6](#6-publicar-com-segurança).
+
 Na raiz do repositório:
 
 ```bash
@@ -101,7 +103,7 @@ O `pdm.lock` já está atualizado. `pdm sync` instala as versões travadas; não
 
 A raiz `/` não tem uma página de aplicação; um `404` ali não significa que a API está fora do ar. Abra `/api/login/` para conferir.
 
-O perfil local é `app.settings.dev`, selecionado por padrão pelo `manage.py`. Ele usa uma chave pública de desenvolvimento e cookies adequados a HTTP local. **Nunca publique esse perfil.** A aplicação não carrega arquivos de ambiente automaticamente.
+Os scripts `dev`, `migrate`, `check` e `cleanup` carregam `.env` pelo PDM e selecionam explicitamente `app.settings.dev`, mesmo que o arquivo ou o terminal indique outro perfil. Esse perfil usa uma chave pública de desenvolvimento e cookies adequados a HTTP local. **Nunca publique esse perfil.** Carregar variáveis de produção não substitui as configurações fixas de `dev.py`. O Django chamado diretamente não carrega `.env` automaticamente.
 
 Para uma SPA local, use `http://localhost:5173` ou `http://localhost:3000`. Não misture `localhost` com `127.0.0.1` no navegador. Caso use outra origem, ajuste `CORS_ALLOWED_ORIGINS` e `CSRF_TRUSTED_ORIGINS` em `app/settings/dev.py`.
 
@@ -238,11 +240,13 @@ Depois de instalar as dependências de desenvolvimento:
 pdm run test
 pdm run lint
 pdm run format --check
-pdm run migrations-check --settings=tests.settings
-pdm run schema-check --settings=tests.settings
+pdm run migrations-check
+pdm run schema-check
 ```
 
 `pdm run test` usa `tests.settings`: banco SQLite em memória, e-mail em memória, sem SMTP real nem acesso ao `db.sqlite3` de desenvolvimento. Os clientes HTTP aplicam a verificação de CSRF; as classes de fluxo usam um hash rápido de senha **somente nos testes**. Não transfira essa configuração para a aplicação publicada.
+
+Testes, lint, formatação e verificações de migrações/schema não carregam `.env`. Os scripts de verificação Django selecionam o perfil de testes explicitamente, evitando herdar o perfil de produção do terminal.
 
 | Cobertura | Arquivos de referência |
 | --- | --- |
@@ -262,7 +266,7 @@ O cliente de testes mantém cookies e envia cabeçalhos, mas **não é um navega
 Para concorrência, use um **PostgreSQL descartável e dedicado aos testes**, com a configuração sintética de `tests/settings_integration.py`, e execute:
 
 ```bash
-pdm run python manage.py test --settings=tests.settings_integration --noinput
+pdm run test:postgres
 ```
 
 Esse comando cria e remove um banco de teste; nunca o aponte para produção. O serviço esperado fica em `127.0.0.1:5432`; os parâmetros estão no arquivo de configuração dos testes. A CI provisiona seu próprio serviço PostgreSQL, sem Redis. No SQLite, os três testes que precisam de concorrência PostgreSQL são ignorados explicitamente, não simulados como aprovados.
@@ -272,6 +276,8 @@ Esse comando cria e remove um banco de teste; nunca o aponte para produção. O 
 ## 6. Publicar com segurança
 
 Use `app.settings.prod`, PostgreSQL privado e HTTPS. Injete a configuração pelo painel de segredos/variáveis da hospedagem; não grave credenciais no repositório nem na imagem. O perfil valida configurações obrigatórias ao carregar.
+
+Os scripts `compose:dev` e `compose:prod` usam explicitamente `--env-file .env` para a interpolação do Compose; seus atalhos `dev:*` e `prod:*` reutilizam esses comandos. Isso não injeta todas as variáveis do arquivo nos contêineres: cada serviço recebe apenas as declaradas em `environment` no YAML. `pdm run deploy-check` carrega `.env` pelo PDM e executa a verificação de implantação com `app.settings.prod`; `pdm run prod:check` executa a verificação dentro de um contêiner. Nenhum desses comandos valida, sozinho, o funcionamento completo da implantação.
 
 | Variável | Configuração |
 | --- | --- |
@@ -333,9 +339,9 @@ Este é o resumo técnico da mesma trilha, não uma especificação paralela nem
 - **SMTP:** `core/shared/email_token_sender.py`, síncrono após bloco transacional, com prazo de expiração conferido antes de enviar; sem fila/retry durável.
 - **Logs:** `core/shared/security.py` aceita apenas eventos/resultados fixos; falhas de emissão/limpeza registram classe da exceção, não a mensagem original.
 - **Limites:** `core/auth/rate_limit.py`, cache local por processo; sem garantia global. Falhas do cache retornam `503`.
-- **Operação:** scheduler externo chama `cleanup_auth`; sem Redis/Celery/Beat. Configuração é injetada, sem carregamento automático de arquivos de ambiente.
+- **Operação:** scheduler externo chama `cleanup_auth`; sem Redis/Celery/Beat. Django direto não carrega `.env`; scripts locais de desenvolvimento e `deploy-check` carregam pelo PDM, e Compose usa `--env-file .env`.
 - **Implantação:** `app.settings.prod`, PostgreSQL, HTTPS; release único para migrações/static; web não root. Compose é VPS de host único, não provisionamento de PaaS.
-- **Verificação:** `pdm run test`, `lint`, `format --check`, `migrations-check --settings=tests.settings`, `schema-check --settings=tests.settings`.
-- **PostgreSQL:** `pdm run python manage.py test --settings=tests.settings_integration --noinput`, somente com serviço descartável dedicado.
+- **Verificação:** `pdm run test`, `lint`, `format --check`, `migrations-check`, `schema-check`; não carregam `.env` e as verificações Django selecionam `tests.settings`.
+- **PostgreSQL:** `pdm run test:postgres`, somente com serviço descartável dedicado; usa `tests.settings_integration`, sem carregar `.env`.
 - **Evidências e limites:** SQLite validado localmente; aprovação da CI e da suíte PostgreSQL confirmada pelo mantenedor. Testes HTTP não são navegador; Docker, SMTP real e restauração de backups precisam de validação própria.
 - **Migrações antigas:** histórico refeito antes desta revisão; não aplicar automaticamente sobre bancos existentes. Veja a etapa 8.

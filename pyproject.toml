@@ -41,19 +41,20 @@ build-backend = "pdm.backend"
 distribution = false
 
 [tool.pdm.scripts]
-dev = "python manage.py runserver"
-migrate = "python manage.py migrate"
-check = "python manage.py check"
+dev = { cmd = "python manage.py runserver --settings=app.settings.dev", env_file = ".env" }
+migrate = { cmd = "python manage.py migrate --settings=app.settings.dev", env_file = ".env" }
+check = { cmd = "python manage.py check --settings=app.settings.dev", env_file = ".env" }
 test = "python manage.py test --settings=tests.settings"
+"test:postgres" = "python manage.py test --settings=tests.settings_integration --noinput"
 lint = "ruff check"
 format = "ruff format"
-migrations-check = "python manage.py makemigrations --check --dry-run"
-schema-check = "python manage.py spectacular --validate --fail-on-warn --file /dev/null"
-deploy-check = { cmd = "python manage.py check --deploy", env = { DJANGO_SETTINGS_MODULE = "app.settings.prod" } }
-cleanup = "python manage.py cleanup_auth"
+migrations-check = "python manage.py makemigrations --check --dry-run --settings=tests.settings"
+schema-check = "python manage.py spectacular --validate --fail-on-warn --file /dev/null --settings=tests.settings"
+deploy-check = { cmd = "python manage.py check --deploy --settings=app.settings.prod", env_file = ".env" }
+cleanup = { cmd = "python manage.py cleanup_auth --settings=app.settings.dev", env_file = ".env" }
 secret = "python -c 'import secrets; print(secrets.token_hex(32))'"
-"compose:dev" = "docker compose -f docker-compose.dev.yml"
-"compose:prod" = "docker compose -f docker-compose.yml"
+"compose:dev" = "docker compose --env-file .env -f docker-compose.dev.yml"
+"compose:prod" = "docker compose --env-file .env -f docker-compose.yml"
 "dev:up" = { composite = ["compose:dev up -d --build"] }
 "dev:down" = { composite = ["compose:dev down"] }
 "dev:logs" = { composite = ["compose:dev logs -f app"] }
