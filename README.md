@@ -267,7 +267,7 @@ pdm run python manage.py test --settings=tests.settings_integration --noinput
 
 Esse comando cria e remove um banco de teste; nunca o aponte para produção. O serviço esperado fica em `127.0.0.1:5432`; os parâmetros estão no arquivo de configuração dos testes. A CI provisiona seu próprio serviço PostgreSQL, sem Redis. No SQLite, os três testes que precisam de concorrência PostgreSQL são ignorados explicitamente, não simulados como aprovados.
 
-**Verificação local desta revisão:** suíte SQLite aprovada, lock consistente, lint/formatação aprovados, nenhuma migração ausente e schema validado sem avisos. PostgreSQL, execução remota da CI, navegador real, SMTP real e contêineres continuam sem validação funcional local. A presença de um job na CI não significa que ele já foi executado.
+**Estado da validação:** suíte SQLite aprovada localmente, lock consistente, lint/formatação aprovados, nenhuma migração ausente e schema validado sem avisos. O mantenedor confirmou a aprovação da CI, incluindo a suíte PostgreSQL e os três testes de concorrência. Navegador real, SMTP real, contêineres e restauração de backups ainda exigem validação funcional própria; a aprovação dos testes automatizados não comprova esses cenários.
 
 ## 6. Publicar com segurança
 
@@ -337,5 +337,5 @@ Este é o resumo técnico da mesma trilha, não uma especificação paralela nem
 - **Implantação:** `app.settings.prod`, PostgreSQL, HTTPS; release único para migrações/static; web não root. Compose é VPS de host único, não provisionamento de PaaS.
 - **Verificação:** `pdm run test`, `lint`, `format --check`, `migrations-check --settings=tests.settings`, `schema-check --settings=tests.settings`.
 - **PostgreSQL:** `pdm run python manage.py test --settings=tests.settings_integration --noinput`, somente com serviço descartável dedicado.
-- **Limites de evidência:** testes HTTP não são navegador; CI PostgreSQL configurada não é execução confirmada; Docker/SMTP reais precisam de validação própria.
+- **Evidências e limites:** SQLite validado localmente; aprovação da CI e da suíte PostgreSQL confirmada pelo mantenedor. Testes HTTP não são navegador; Docker, SMTP real e restauração de backups precisam de validação própria.
 - **Migrações antigas:** histórico refeito antes desta revisão; não aplicar automaticamente sobre bancos existentes. Veja a etapa 8.
