@@ -1,8 +1,12 @@
 import re
+from contextlib import redirect_stdout
 from datetime import timedelta
+from io import StringIO
+from unittest.mock import patch
 
 from django.core import mail
 from django.template.loader import render_to_string
+from django.test import override_settings
 from django.utils import timezone
 
 from core.shared.email_templates import SUBJECTS, render_email_token
@@ -52,6 +56,28 @@ class EmailTemplateTests(ApiCase):
             expires_at=timezone.now() + timedelta(minutes=15),
         )
         self.assert_multipart(SUBJECTS["password_reset"], "recipient@example.com")
+
+    @override_settings(
+        MAILERS={
+            "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}
+        }
+    )
+    def test_console_sender_skips_templates_and_sends_plain_code(self):
+        output = StringIO()
+        with (
+            patch("django.template.loader.render_to_string") as render,
+            redirect_stdout(output),
+        ):
+            send_email_token(
+                "recipient@example.com",
+                "123456",
+                "password_reset",
+                expires_at=timezone.now() + timedelta(minutes=15),
+            )
+        render.assert_not_called()
+        self.assertIn(SUBJECTS["password_reset"], output.getvalue())
+        self.assertIn("Your code is: 123456", output.getvalue())
+        self.assertNotIn("Content-Type: text/html", output.getvalue())
 
     def test_registration_issues_multipart_message(self):
         response = self.post_with_commit(
