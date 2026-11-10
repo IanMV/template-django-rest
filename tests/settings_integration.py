@@ -1,9 +1,6 @@
-from uuid import uuid4
+from .settings import *  # noqa: F403
 
-from app.settings.base import *  # noqa: F403
-
-SECRET_KEY = "integration-test-only-secret-key-at-least-thirty-two-bytes"
-ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
+# Synthetic, disposable PostgreSQL service used by CI, never a production database.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -19,15 +16,3 @@ DATABASES = {
         "TEST": {"NAME": "test_template_auth_integration"},
     }
 }
-CACHES = {
-    alias: {
-        "BACKEND": "tests.redis_cache.TestRedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/0",
-        "KEY_PREFIX": f"template-auth-test:{uuid4().hex}:{alias}",
-        "OPTIONS": {"socket_connect_timeout": 5, "socket_timeout": 5},
-    }
-    for alias in ("default", "sessions")
-}
-MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True

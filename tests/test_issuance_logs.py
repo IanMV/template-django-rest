@@ -5,7 +5,6 @@ from django.db import IntegrityError
 from django.db.models.query import QuerySet
 
 from core.models import EmailChange, EmailVerification, PasswordReset
-from core.shared.tasks import send_async_email
 from tests.base import ApiTransactionCase
 
 
@@ -64,9 +63,8 @@ class IssuanceLogSafetyTests(ApiTransactionCase):
                             )
                         else:
                             stack.enter_context(
-                                patch.object(
-                                    send_async_email,
-                                    "apply_async",
+                                patch(
+                                    f"{module}.send_email_token",
                                     side_effect=fail_enqueue,
                                 )
                             )

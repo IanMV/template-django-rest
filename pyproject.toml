@@ -44,7 +44,7 @@ distribution = false
 dev = "python manage.py runserver"
 migrate = "python manage.py migrate"
 check = "python manage.py check"
-test = "python manage.py test"
+test = "python manage.py test --settings=tests.settings"
 lint = "ruff check"
 format = "ruff format"
 migrations-check = "python manage.py makemigrations --check --dry-run"

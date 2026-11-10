@@ -1,9 +1,10 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.cache import cache
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
-from core.models.user import User, UserSession
+from core.models.user import User
 from tests.base import ApiCase
 
 
@@ -11,7 +12,7 @@ class UserTests(ApiCase):
     def test_deactivation_requires_correct_password_without_side_effects(self):
         user = self.create_user()
         self.login(user)
-        session = UserSession.objects.get(user=user)
+        version = user.session_version
         missing = self.client.post("/api/me/deactivate/", {}, format="json")
         wrong = self.client.post(
             "/api/me/deactivate/", {"password": "wrong"}, format="json"
@@ -21,9 +22,8 @@ class UserTests(ApiCase):
         self.assertEqual(wrong.status_code, 400)
         self.assertEqual(str(wrong.data["password"]), "Invalid current password.")
         user.refresh_from_db()
-        session.refresh_from_db()
         self.assertTrue(user.is_active)
-        self.assertTrue(session.is_active)
+        self.assertEqual(user.session_version, version)
 
     def test_deactivation_reauth_throttle_and_cache_failure(self):
         user = self.create_user()
@@ -41,7 +41,7 @@ class UserTests(ApiCase):
         )
         cache.clear()
         with patch("core.auth.rate_limit.cache.get", side_effect=RuntimeError("down")):
-            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+            with self.assertNoLogs("core.auth.rate_limit", level="ERROR"):
                 response = self.client.post(
                     "/api/me/deactivate/",
                     {"password": self.password},
@@ -54,8 +54,10 @@ class UserTests(ApiCase):
     def test_deactivation_reauth_cache_reset_failure_fails_closed(self):
         user = self.create_user()
         self.login(user)
-        with patch("core.auth.rate_limit.cache.delete", side_effect=RuntimeError("down")):
-            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+        with patch(
+            "core.auth.rate_limit.cache.delete", side_effect=RuntimeError("down")
+        ):
+            with self.assertNoLogs("core.auth.rate_limit", level="ERROR"):
                 response = self.client.post(
                     "/api/me/deactivate/",
                     {"password": self.password},
@@ -64,7 +66,7 @@ class UserTests(ApiCase):
         self.assertEqual(response.status_code, 503)
         user.refresh_from_db()
         self.assertTrue(user.is_active)
-        self.assertTrue(UserSession.objects.get(user=user).is_active)
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 200)
 
     def test_profile_returns_current_user(self):
         user = self.create_user()
@@ -119,10 +121,8 @@ class UserTests(ApiCase):
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertFalse(user.is_active)
-        self.assertFalse(UserSession.objects.filter(user=user, is_active=True).exists())
-        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 2)
-        self.assertEqual(response.cookies["access_token"]["max-age"], 0)
-        self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
+        self.assertEqual(user.session_version, 1)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME]["max-age"], 0)
         self.assertEqual(other.get("/api/users/me/").status_code, 401)
 
     def test_create_superuser_requires_password(self):
@@ -132,7 +132,9 @@ class UserTests(ApiCase):
                 password=None,
                 name="Admin",
             )
-        self.assertFalse(User.objects.filter(email="admin_no_pass@example.com").exists())
+        self.assertFalse(
+            User.objects.filter(email="admin_no_pass@example.com").exists()
+        )
 
         with self.assertRaisesMessage(ValueError, "Superuser must have a password."):
             User.objects.create_superuser(
@@ -140,7 +142,9 @@ class UserTests(ApiCase):
                 password="",
                 name="Admin",
             )
-        self.assertFalse(User.objects.filter(email="admin_empty_pass@example.com").exists())
+        self.assertFalse(
+            User.objects.filter(email="admin_empty_pass@example.com").exists()
+        )
 
     def test_custom_user_admin_creation_form(self):
         from core.admin import CustomUserCreationForm
@@ -165,33 +169,28 @@ class UserTests(ApiCase):
 
         user = self.create_user()
         self.login(user)
-        self.assertTrue(UserSession.objects.filter(user=user, is_active=True).exists())
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 200)
 
         admin_instance = UserAdmin(User, AdminSite())
         user.is_active = False
-        admin_instance.save_model(None, user, None, change=True)
+        admin_instance.save_model(
+            None, user, SimpleNamespace(changed_data=["is_active"]), change=True
+        )
 
         user.refresh_from_db()
         self.assertFalse(user.is_active)
-        self.assertFalse(UserSession.objects.filter(user=user, is_active=True).exists())
-        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 1)
+        self.assertEqual(user.session_version, 1)
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
 
-    def test_admin_session_is_read_only_and_deletion_revokes_tokens(self):
+    def test_admin_email_change_revokes_sessions(self):
         from django.contrib.admin.sites import AdminSite
 
-        from core.admin import UserSessionAdmin
+        from core.admin import UserAdmin
 
         user = self.create_user()
         self.login(user)
-        session = UserSession.objects.get(user=user, is_active=True)
-
-        session_admin = UserSessionAdmin(UserSession, AdminSite())
-        self.assertFalse(session_admin.has_add_permission(None))
-        self.assertFalse(session_admin.has_change_permission(None))
-
-        session_admin.delete_model(None, session)
-        session.refresh_from_db()
-        self.assertFalse(session.is_active)
-        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 1)
-
-
+        user.email = "changed@example.com"
+        UserAdmin(User, AdminSite()).save_model(
+            None, user, SimpleNamespace(changed_data=["email"]), change=True
+        )
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 401)

@@ -1,4 +1,4 @@
-name: Static checks
+name: Checks
 
 on: [push, pull_request]
 
@@ -17,4 +17,37 @@ jobs:
         run: pdm sync -G lint
       - name: Check Python lint
         run: pdm run lint
-      # shortcut: existing tests target JWT; restore behavior CI after session tests are authorized and updated.
+      - name: Check Python formatting
+        run: pdm run format --check
+      - name: Check migrations
+        run: pdm run migrations-check --settings=tests.settings
+      - name: Validate OpenAPI schema
+        run: pdm run schema-check --settings=tests.settings
+      - name: Test HTTP and account flows
+        run: pdm run test
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pdm-project/setup-pdm@v4
+        with:
+          python-version: "3.14"
+      - name: Install locked dependencies
+        run: pdm sync -G lint
+      - name: Test PostgreSQL transactions and concurrency
+        run: pdm run python manage.py test --settings=tests.settings_integration --noinput

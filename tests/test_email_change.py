@@ -1,17 +1,16 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core import mail
 from django.core.cache import cache
 from django.db import IntegrityError
 from django.utils import timezone
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from core.auth.services import SessionService
 from core.email_change.services import EmailChangeService
 from core.models import PasswordReset
 from core.models.email_change import EmailChange
-from core.models.user import UserSession
 from tests.base import ApiCase, ApiTransactionCase
 
 
@@ -74,7 +73,7 @@ class EmailChangeTests(ApiCase):
         user = self.create_user()
         self.login(user)
         with patch("core.auth.rate_limit.cache.get", side_effect=RuntimeError("down")):
-            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+            with self.assertNoLogs("core.auth.rate_limit", level="ERROR"):
                 response = self.client.post(
                     self.base_url + "request/",
                     {"new_email": self.new_email, "password": self.password},
@@ -87,7 +86,7 @@ class EmailChangeTests(ApiCase):
         user = self.create_user()
         self.login(user)
         with patch("core.auth.rate_limit.cache.add", side_effect=RuntimeError("down")):
-            with self.assertLogs("core.auth.rate_limit", level="ERROR"):
+            with self.assertNoLogs("core.auth.rate_limit", level="ERROR"):
                 response = self.client.post(
                     self.base_url + "request/",
                     {"new_email": self.new_email, "password": "wrong"},
@@ -153,12 +152,6 @@ class EmailChangeTests(ApiCase):
         other = self.new_client()
         self.login(user, client=other, ip="127.0.0.2")
         code = self.request_code()
-        self.assertEqual(
-            self.client.post(
-                self.base_url + "verify/", {"code": code}, format="json"
-            ).status_code,
-            200,
-        )
         record = EmailChange.objects.get(user=user)
         self.assertFalse(record.used)
         response = self.client.post(
@@ -171,10 +164,8 @@ class EmailChangeTests(ApiCase):
         record.refresh_from_db()
         self.assertEqual(user.email, self.new_email)
         self.assertTrue(record.used)
-        self.assertFalse(UserSession.objects.filter(user=user, is_active=True).exists())
-        self.assertEqual(BlacklistedToken.objects.filter(token__user=user).count(), 2)
-        self.assertEqual(response.cookies["access_token"]["max-age"], 0)
-        self.assertEqual(response.cookies["refresh_token"]["max-age"], 0)
+        self.assertEqual(user.session_version, 1)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME]["max-age"], 0)
         self.assertEqual(other.get("/api/users/me/").status_code, 401)
         self.login(user)
         self.assertEqual(
@@ -300,7 +291,9 @@ class EmailChangeTests(ApiCase):
         for attempt in range(5):
             self.assertEqual(
                 self.client.post(
-                    self.base_url + "verify/", {"code": wrong}, format="json"
+                    self.base_url + "confirm/",
+                    {"code": wrong, "password": self.password},
+                    format="json",
                 ).status_code,
                 400,
                 attempt,
@@ -309,7 +302,9 @@ class EmailChangeTests(ApiCase):
         self.assertEqual(record.attempts, 5)
         self.assertEqual(
             self.client.post(
-                self.base_url + "verify/", {"code": code}, format="json"
+                self.base_url + "confirm/",
+                {"code": code, "password": self.password},
+                format="json",
             ).status_code,
             400,
         )
@@ -321,14 +316,17 @@ class EmailChangeTests(ApiCase):
         expiry = EmailChange.objects.get(user=user).expires_at
         with patch("django.utils.timezone.now", return_value=expiry):
             response = self.client.post(
-                self.base_url + "verify/", {"code": code}, format="json"
+                self.base_url + "confirm/",
+                {"code": code, "password": self.password},
+                format="json",
             )
         self.assertEqual(response.status_code, 400)
 
     def test_reissue_resets_expiry_and_old_code(self):
         user = self.create_user()
         self.login(user)
-        previous = self.request_code()
+        with patch("core.email_change.services.secrets.randbelow", return_value=123456):
+            previous = self.request_code()
         record = EmailChange.objects.get(user=user)
         old_pk, old_expiry = record.pk, record.expires_at
         record.used = True
@@ -338,7 +336,10 @@ class EmailChangeTests(ApiCase):
             "django.utils.timezone.now",
             return_value=timezone.now() + timedelta(minutes=1),
         ):
-            current = self.request_code()
+            with patch(
+                "core.email_change.services.secrets.randbelow", return_value=654321
+            ):
+                current = self.request_code()
         record = EmailChange.objects.get(user=user)
         self.assertNotEqual(record.pk, old_pk)
         self.assertGreater(record.expires_at, old_expiry)
@@ -346,13 +347,17 @@ class EmailChangeTests(ApiCase):
         self.assertEqual(record.attempts, 0)
         self.assertEqual(
             self.client.post(
-                self.base_url + "verify/", {"code": previous}, format="json"
+                self.base_url + "confirm/",
+                {"code": previous, "password": self.password},
+                format="json",
             ).status_code,
             400,
         )
         self.assertEqual(
             self.client.post(
-                self.base_url + "verify/", {"code": current}, format="json"
+                self.base_url + "confirm/",
+                {"code": current, "password": self.password},
+                format="json",
             ).status_code,
             200,
         )

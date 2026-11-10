@@ -1,7 +1,9 @@
 import re
+from datetime import timedelta
 
 from django.core import mail
 from django.template.loader import render_to_string
+from django.utils import timezone
 
 from core.shared.email_templates import SUBJECTS, render_email_token
 from core.shared.email_token_sender import send_email_token
@@ -43,7 +45,12 @@ class EmailTemplateTests(ApiCase):
         self.assertIn(injected, text)
 
     def test_sender_attaches_html_and_preserves_plain_text(self):
-        send_email_token("recipient@example.com", "123456", "password_reset")
+        send_email_token(
+            "recipient@example.com",
+            "123456",
+            "password_reset",
+            expires_at=timezone.now() + timedelta(minutes=15),
+        )
         self.assert_multipart(SUBJECTS["password_reset"], "recipient@example.com")
 
     def test_registration_issues_multipart_message(self):

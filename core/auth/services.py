@@ -38,8 +38,8 @@ class AuthService:
                 User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
             )
             require_unchanged_user(user, current)
+            reset_login_attempts(email, ip_address)
             login(request, current, backend=user.backend)
             request.session.save()
 
-        reset_login_attempts(email, ip_address)
         return current

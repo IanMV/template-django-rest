@@ -45,14 +45,19 @@ class RegistrationTests(ApiCase):
             (first.status_code, first.data), (second.status_code, second.data)
         )
 
-    def test_active_account_cannot_verify_lingering_code(self):
+    def test_active_account_cannot_confirm_lingering_code(self):
         code = self.request_code()
         user = User.objects.get(email=self.email)
         user.is_active = True
         user.save(update_fields=["is_active"])
         response = self.client.post(
-            self.base_url + "verify/",
-            {"email": self.email, "code": code},
+            self.base_url + "confirm/",
+            {
+                "email": self.email,
+                "code": code,
+                "name": "Example Person",
+                "password": self.password,
+            },
             format="json",
         )
         self.assertEqual(response.status_code, 400)
@@ -60,15 +65,9 @@ class RegistrationTests(ApiCase):
             str(response.data["code"]), "Invalid or expired verification code."
         )
 
-    def test_verify_does_not_consume_and_confirm_creates_active_user(self):
+    def test_confirm_consumes_code_creates_user_but_does_not_log_in(self):
         code = self.request_code()
         payload = {"email": self.email, "code": code}
-        self.assertEqual(
-            self.client.post(
-                self.base_url + "verify/", payload, format="json"
-            ).status_code,
-            200,
-        )
         record = EmailVerification.objects.get(user__email=self.email)
         self.assertFalse(record.used)
         response = self.client.post(
@@ -82,6 +81,7 @@ class RegistrationTests(ApiCase):
         self.assertTrue(user.check_password(self.password))
         record.refresh_from_db()
         self.assertTrue(record.used)
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
         self.assertEqual(
             self.client.post(
                 self.base_url + "confirm/",
@@ -95,10 +95,12 @@ class RegistrationTests(ApiCase):
         code = self.request_code()
         for attempt in range(5):
             response = self.client.post(
-                self.base_url + "verify/",
+                self.base_url + "confirm/",
                 {
                     "email": self.email,
                     "code": "000000" if code != "000000" else "999999",
+                    "name": "Example Person",
+                    "password": self.password,
                 },
                 format="json",
             )
@@ -108,8 +110,13 @@ class RegistrationTests(ApiCase):
         self.assertTrue(record.used)
         self.assertEqual(
             self.client.post(
-                self.base_url + "verify/",
-                {"email": self.email, "code": code},
+                self.base_url + "confirm/",
+                {
+                    "email": self.email,
+                    "code": code,
+                    "name": "Example Person",
+                    "password": self.password,
+                },
                 format="json",
             ).status_code,
             400,
@@ -120,14 +127,20 @@ class RegistrationTests(ApiCase):
         record = EmailVerification.objects.get(user__email=self.email)
         with patch("django.utils.timezone.now", return_value=record.expires_at):
             response = self.client.post(
-                self.base_url + "verify/",
-                {"email": self.email, "code": code},
+                self.base_url + "confirm/",
+                {
+                    "email": self.email,
+                    "code": code,
+                    "name": "Example Person",
+                    "password": self.password,
+                },
                 format="json",
             )
         self.assertEqual(response.status_code, 400)
 
     def test_reissue_replaces_old_code_and_resets_expiry_and_usage(self):
-        previous = self.request_code()
+        with patch("core.registration.services.secrets.randbelow", return_value=123456):
+            previous = self.request_code()
         record = EmailVerification.objects.get(user__email=self.email)
         old_pk, old_expiry = record.pk, record.expires_at
         record.used = True
@@ -137,7 +150,10 @@ class RegistrationTests(ApiCase):
             "django.utils.timezone.now",
             return_value=timezone.now() + timedelta(minutes=1),
         ):
-            current = self.request_code()
+            with patch(
+                "core.registration.services.secrets.randbelow", return_value=654321
+            ):
+                current = self.request_code()
         record = EmailVerification.objects.get(user__email=self.email)
         self.assertNotEqual(record.pk, old_pk)
         self.assertGreater(record.expires_at, old_expiry)
@@ -145,16 +161,26 @@ class RegistrationTests(ApiCase):
         self.assertEqual(record.attempts, 0)
         self.assertEqual(
             self.client.post(
-                self.base_url + "verify/",
-                {"email": self.email, "code": previous},
+                self.base_url + "confirm/",
+                {
+                    "email": self.email,
+                    "code": previous,
+                    "name": "Example Person",
+                    "password": self.password,
+                },
                 format="json",
             ).status_code,
             400,
         )
         self.assertEqual(
             self.client.post(
-                self.base_url + "verify/",
-                {"email": self.email, "code": current},
+                self.base_url + "confirm/",
+                {
+                    "email": self.email,
+                    "code": current,
+                    "name": "Example Person",
+                    "password": self.password,
+                },
                 format="json",
             ).status_code,
             200,
@@ -199,7 +225,7 @@ class RegistrationTests(ApiCase):
                     response.data, {"detail": "If the e-mail exists, a code was sent."}
                 )
                 self.assertFalse(mail.outbox)
-                for endpoint in ("verify/", "confirm/"):
+                for endpoint in ("confirm/",):
                     payload = {"email": user.email, "code": "123456"}
                     if endpoint == "confirm/":
                         payload.update(
@@ -217,7 +243,9 @@ class RegistrationTests(ApiCase):
 
 
 class RegistrationDeliveryFailureTests(ApiTransactionCase):
-    def test_delivery_failure_returns_503_and_rolls_back_new_user(self):
+    def test_delivery_failure_returns_503_and_invalidates_code_without_deleting_user(
+        self,
+    ):
         email = "new@example.com"
         with patch(
             "core.registration.services.send_email_token",
@@ -227,7 +255,8 @@ class RegistrationDeliveryFailureTests(ApiTransactionCase):
                 "/api/registration/request/", {"email": email}, format="json"
             )
         self.assertEqual(response.status_code, 503)
-        self.assertFalse(User.objects.filter(email=email).exists())
+        self.assertTrue(User.objects.filter(email=email, is_active=False).exists())
+        self.assertFalse(EmailVerification.objects.filter(user__email=email).exists())
 
 
 class RegistrationAttemptPersistenceTests(ApiTransactionCase):

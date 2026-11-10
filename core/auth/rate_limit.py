@@ -48,7 +48,10 @@ def login_pair_key(email, ip_address):
 
 
 def reset_login_attempts(email, ip_address):
-    cache.delete(login_pair_key(email, ip_address))
+    try:
+        cache.delete(login_pair_key(email, ip_address))
+    except Exception:
+        raise ServiceUnavailable() from None
 
 
 def require_current_password(user, password):
@@ -61,7 +64,10 @@ def require_current_password(user, password):
         record_event("REAUTH", "BLOCKED")
         raise Throttled(wait=300)
     if user.check_password(password):
-        cache.delete(key)
+        try:
+            cache.delete(key)
+        except Exception:
+            raise ServiceUnavailable() from None
         return
     _limit(key, 5, 300)
     record_event("REAUTH", "FAILURE")

@@ -6,7 +6,6 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework.test import APIClient
 
 from core.models.user import User
-from tests.redis_cache import TestRedisCache
 
 
 class BehaviorHelpers:
@@ -14,14 +13,16 @@ class BehaviorHelpers:
 
     def setUp(self):
         super().setUp()
-        default_cache = caches["default"]
-        if isinstance(default_cache, TestRedisCache):
-            default_cache.clear_rate_limits()
-        else:
-            default_cache.clear()
-        caches["sessions"].clear()
+        caches["default"].clear()
         mail.outbox.clear()
         self.client = self.new_client()
+        self.bootstrap(self.client)
+
+    def bootstrap(self, client):
+        response = client.get("/api/login/")
+        self.assertEqual(response.status_code, 200)
+        client.credentials(HTTP_X_CSRFTOKEN=response.data["csrfToken"])
+        return response
 
     def new_client(self):
         return APIClient(enforce_csrf_checks=True)
@@ -35,15 +36,11 @@ class BehaviorHelpers:
         )
 
     def login(
-        self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser", remember_me=False
+        self, user, client=None, password=None, ip="127.0.0.1", agent="TestBrowser"
     ):
         client = client or self.client
-        bootstrap = client.get("/api/login/", REMOTE_ADDR=ip)
-        self.assertEqual(bootstrap.status_code, 204)
-        client.credentials(HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
+        self.bootstrap(client)
         payload = {"email": user.email, "password": password or self.password}
-        if remember_me:
-            payload["remember_me"] = True
         response = client.post(
             "/api/login/",
             payload,
@@ -52,6 +49,7 @@ class BehaviorHelpers:
             HTTP_USER_AGENT=agent,
         )
         self.assertEqual(response.status_code, 200, response.data)
+        client.credentials(HTTP_X_CSRFTOKEN=response.data["csrfToken"])
         return client, response
 
     def email_code(self):
@@ -69,8 +67,6 @@ class BehaviorHelpers:
 
 @override_settings(
     MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},
-    CELERY_TASK_ALWAYS_EAGER=True,
-    CELERY_TASK_EAGER_PROPAGATES=True,
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
     SECRET_KEY="django-insecure-test-key-with-strictly-more-than-thirty-two-bytes-12345",
 )
@@ -80,8 +76,6 @@ class ApiCase(BehaviorHelpers, TestCase):
 
 @override_settings(
     MAILERS={"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}},
-    CELERY_TASK_ALWAYS_EAGER=True,
-    CELERY_TASK_EAGER_PROPAGATES=True,
     PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
     SECRET_KEY="django-insecure-test-key-with-strictly-more-than-thirty-two-bytes-12345",
 )
