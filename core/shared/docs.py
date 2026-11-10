@@ -34,7 +34,8 @@ NotAuthenticatedSerializer = inline_serializer(
     {"detail": CharField(default=NotAuthenticated().default_detail)},
 )
 ForbiddenSerializer = inline_serializer(
-    "ForbiddenResponse", {"detail": CharField(default=PermissionDenied().default_detail)}
+    "ForbiddenResponse",
+    {"detail": CharField(default=PermissionDenied().default_detail)},
 )
 IncorrectAuthenticationsCredentialsSerializer = inline_serializer(
     "IncorrectCredentialsResponse",
