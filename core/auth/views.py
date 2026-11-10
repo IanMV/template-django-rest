@@ -30,7 +30,10 @@ class LoginView(APIView):
     @extend_schema(
         tags=["auth"],
         summary="Get a CSRF token before any mutation",
-        description="Call with credentials included. Keep csrfToken in memory and send it as X-CSRFTOKEN. No authentication credential is returned.",
+        description=(
+            "Call with credentials included. Keep csrfToken in memory and send it "
+            "as X-CSRFTOKEN. No authentication credential is returned."
+        ),
         auth=[],
         responses={200: CsrfSerializer},
     )
@@ -40,7 +43,10 @@ class LoginView(APIView):
     @extend_schema(
         tags=["auth"],
         summary="Log in for 24 hours",
-        description="Requires X-CSRFTOKEN. Sets an HttpOnly session cookie and returns the rotated CSRF token. No refresh endpoint is needed.",
+        description=(
+            "Requires X-CSRFTOKEN. Sets an HttpOnly session cookie and returns "
+            "the rotated CSRF token. No refresh endpoint is needed."
+        ),
         auth=[{"csrfHeader": []}],
         request=LoginSerializer,
         responses={

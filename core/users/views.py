@@ -83,7 +83,10 @@ class DeactivateSelfView(APIView):
     @extend_schema(
         tags=["user"],
         summary="Deactivate own user account",
-        description="Requires the current password. Deactivates the authenticated account and revokes all active sessions.",
+        description=(
+            "Requires the current password. Deactivates the authenticated account "
+            "and revokes all active sessions."
+        ),
         request=DeactivateSelfSerializer,
         examples=[InvalidPasswordExample, CsrfFailureExample, ReauthRateLimitedExample],
         responses={

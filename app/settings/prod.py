@@ -7,27 +7,48 @@ from .base import *  # noqa: F403
 
 DEBUG = False
 SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY or len(SECRET_KEY.strip()) < 50 or SECRET_KEY.startswith("django-insecure-"):
+if (
+    not SECRET_KEY
+    or len(SECRET_KEY.strip()) < 50
+    or SECRET_KEY.startswith("django-insecure-")
+):
     raise ImproperlyConfigured("Inject a production SECRET_KEY of at least 50 characters.")
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()]
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
+]
 if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
     raise ImproperlyConfigured("ALLOWED_HOSTS must list explicit API hostnames.")
-CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("FRONTEND_ORIGINS", "").split(",") if origin.strip()]
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
+    if origin.strip()
+]
 if not CORS_ALLOWED_ORIGINS:
     raise ImproperlyConfigured("FRONTEND_ORIGINS must list trusted HTTPS frontend origins.")
 for origin in CORS_ALLOWED_ORIGINS:
     parts = urlsplit(origin)
     if (
-        parts.scheme != "https" or not parts.hostname or "*" in origin
-        or parts.username is not None or parts.password is not None
-        or parts.path or parts.query or parts.fragment
+        parts.scheme != "https"
+        or not parts.hostname
+        or "*" in origin
+        or parts.username is not None
+        or parts.password is not None
+        or parts.path
+        or parts.query
+        or parts.fragment
     ):
-        raise ImproperlyConfigured("FRONTEND_ORIGINS entries must be explicit HTTPS origins without paths.")
+        raise ImproperlyConfigured(
+            "FRONTEND_ORIGINS entries must be explicit HTTPS origins without paths."
+        )
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 database_url = os.getenv("DATABASE_URL", "")
 db_parts = urlsplit(database_url)
-if db_parts.scheme not in ("postgres", "postgresql") or not db_parts.hostname or not db_parts.path.lstrip("/"):
+if (
+    db_parts.scheme not in ("postgres", "postgresql")
+    or not db_parts.hostname
+    or not db_parts.path.lstrip("/")
+):
     raise ImproperlyConfigured("DATABASE_URL must identify a PostgreSQL host and database.")
 DATABASES = {
     "default": {
@@ -78,7 +99,10 @@ MAILERS = {
 }
 if not MAILERS["default"]["OPTIONS"]["host"]:
     raise ImproperlyConfigured("EMAIL_HOST is required in production.")
-if MAILERS["default"]["OPTIONS"]["use_tls"] and MAILERS["default"]["OPTIONS"]["use_ssl"]:
+if (
+    MAILERS["default"]["OPTIONS"]["use_tls"]
+    and MAILERS["default"]["OPTIONS"]["use_ssl"]
+):
     raise ImproperlyConfigured("Choose EMAIL_USE_TLS or EMAIL_USE_SSL, not both.")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
 if not DEFAULT_FROM_EMAIL:

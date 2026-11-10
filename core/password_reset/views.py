@@ -5,7 +5,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.auth.rate_limit import limit_code_verification_attempts
-from core.password_reset.serializers import PasswordResetConfirmSerializer, PasswordResetRequestSerializer
+from core.password_reset.serializers import (
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+)
 from core.password_reset.services import PasswordResetService
 from core.shared.client_ip import get_client_ip
 from core.shared.docs import (
@@ -26,15 +29,26 @@ class PasswordResetRequestView(APIView):
     @extend_schema(
         tags=["password-reset"],
         summary="Request a password reset code",
-        description="Step 1 of 2. Same response for unknown accounts and mail delivery failures. Requires CSRF.",
+        description=(
+            "Step 1 of 2. Same response for unknown accounts and mail delivery "
+            "failures. Requires CSRF."
+        ),
         auth=[{"csrfHeader": []}],
         request=PasswordResetRequestSerializer,
-        responses={200: RequestSentSerializer, 400: ValidationErrorResponse, 403: CsrfForbiddenSerializer, 429: ThrottledSerializer, 503: ServiceUnavailableSerializer},
+        responses={
+            200: RequestSentSerializer,
+            400: ValidationErrorResponse,
+            403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
+        },
     )
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        PasswordResetService.request_reset(serializer.validated_data["email"], get_client_ip(request))
+        PasswordResetService.request_reset(
+            serializer.validated_data["email"], get_client_ip(request)
+        )
         return Response({"detail": MSG_CODE_SENT})
 
 
@@ -44,10 +58,19 @@ class PasswordResetConfirmView(APIView):
     @extend_schema(
         tags=["password-reset"],
         summary="Confirm a new password",
-        description="Step 2 of 2. Consumes the code and invalidates all existing sessions. Requires CSRF.",
+        description=(
+            "Step 2 of 2. Consumes the code and invalidates all existing sessions. "
+            "Requires CSRF."
+        ),
         auth=[{"csrfHeader": []}],
         request=PasswordResetConfirmSerializer,
-        responses={200: PasswordResetSerializer, 400: ValidationErrorResponse, 403: CsrfForbiddenSerializer, 429: ThrottledSerializer, 503: ServiceUnavailableSerializer},
+        responses={
+            200: PasswordResetSerializer,
+            400: ValidationErrorResponse,
+            403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
+        },
     )
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)

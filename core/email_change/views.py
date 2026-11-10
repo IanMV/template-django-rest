@@ -5,7 +5,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.auth.rate_limit import limit_code_verification_attempts
-from core.email_change.serializers import EmailChangeConfirmSerializer, EmailChangeRequestSerializer
+from core.email_change.serializers import (
+    EmailChangeConfirmSerializer,
+    EmailChangeRequestSerializer,
+)
 from core.email_change.services import EmailChangeService
 from core.shared.client_ip import get_client_ip
 from core.shared.docs import (
@@ -29,7 +32,14 @@ class EmailChangeRequestView(APIView):
         summary="Request an email change code",
         description="Step 1 of 2. Requires the current password. Sends a code to the new address.",
         request=EmailChangeRequestSerializer,
-        responses={200: RequestSentSerializer, 400: ValidationErrorResponse, 401: NotAuthenticatedSerializer, 403: CsrfForbiddenSerializer, 429: ThrottledSerializer, 503: ServiceUnavailableSerializer},
+        responses={
+            200: RequestSentSerializer,
+            400: ValidationErrorResponse,
+            401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
+        },
     )
     def post(self, request):
         serializer = EmailChangeRequestSerializer(data=request.data)
@@ -49,9 +59,19 @@ class EmailChangeConfirmView(APIView):
     @extend_schema(
         tags=["email-change"],
         summary="Confirm an email change",
-        description="Step 2 of 2. Requires the code and current password. Invalidates all sessions; log in again with the new email.",
+        description=(
+            "Step 2 of 2. Requires the code and current password. Invalidates all "
+            "sessions; log in again with the new email."
+        ),
         request=EmailChangeConfirmSerializer,
-        responses={200: NewEmailChangedSerializer, 400: ValidationErrorResponse, 401: NotAuthenticatedSerializer, 403: CsrfForbiddenSerializer, 429: ThrottledSerializer, 503: ServiceUnavailableSerializer},
+        responses={
+            200: NewEmailChangedSerializer,
+            400: ValidationErrorResponse,
+            401: NotAuthenticatedSerializer,
+            403: CsrfForbiddenSerializer,
+            429: ThrottledSerializer,
+            503: ServiceUnavailableSerializer,
+        },
     )
     def post(self, request):
         serializer = EmailChangeConfirmSerializer(data=request.data)
