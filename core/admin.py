@@ -122,7 +122,6 @@ class UserAdmin(UserAdminFromDjango):
             SessionService.revoke_all_sessions(obj)
 
 
-
 class OneTimeCodeAdmin(NoAddModelAdmin):
     list_display = (
         "user",

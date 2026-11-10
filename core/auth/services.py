@@ -34,7 +34,9 @@ class AuthService:
             raise AuthenticationFailed()
 
         with transaction.atomic():
-            current = User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+            current = (
+                User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+            )
             require_unchanged_user(user, current)
             login(request, current, backend=user.backend)
             request.session.save()

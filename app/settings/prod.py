@@ -12,7 +12,9 @@ if (
     or len(SECRET_KEY.strip()) < 50
     or SECRET_KEY.startswith("django-insecure-")
 ):
-    raise ImproperlyConfigured("Inject a production SECRET_KEY of at least 50 characters.")
+    raise ImproperlyConfigured(
+        "Inject a production SECRET_KEY of at least 50 characters."
+    )
 ALLOWED_HOSTS = [
     host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
 ]
@@ -24,7 +26,9 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 if not CORS_ALLOWED_ORIGINS:
-    raise ImproperlyConfigured("FRONTEND_ORIGINS must list trusted HTTPS frontend origins.")
+    raise ImproperlyConfigured(
+        "FRONTEND_ORIGINS must list trusted HTTPS frontend origins."
+    )
 for origin in CORS_ALLOWED_ORIGINS:
     parts = urlsplit(origin)
     if (
@@ -49,7 +53,9 @@ if (
     or not db_parts.hostname
     or not db_parts.path.lstrip("/")
 ):
-    raise ImproperlyConfigured("DATABASE_URL must identify a PostgreSQL host and database.")
+    raise ImproperlyConfigured(
+        "DATABASE_URL must identify a PostgreSQL host and database."
+    )
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -58,7 +64,9 @@ DATABASES = {
         "PASSWORD": unquote(db_parts.password or ""),
         "HOST": db_parts.hostname,
         "PORT": str(db_parts.port or 5432),
-        "OPTIONS": {key: values[-1] for key, values in parse_qs(db_parts.query).items()},
+        "OPTIONS": {
+            key: values[-1] for key, values in parse_qs(db_parts.query).items()
+        },
     },
 }
 

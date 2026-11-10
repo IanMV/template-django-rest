@@ -7,7 +7,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.auth.serializers import CsrfSerializer, LoginResponseSerializer, LoginSerializer
+from core.auth.serializers import (
+    CsrfSerializer,
+    LoginResponseSerializer,
+    LoginSerializer,
+)
 from core.auth.services import AuthService
 from core.shared.client_ip import get_client_ip
 from core.shared.docs import (

@@ -7,7 +7,7 @@ def get_client_ip(request) -> str | None:
     remote = request.META.get("REMOTE_ADDR")
     try:
         remote = str(ip_address(remote))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         remote = None
 
     count = settings.NUM_PROXIES

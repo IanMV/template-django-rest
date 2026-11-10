@@ -42,7 +42,10 @@ class RegistrationService:
                 )
             else:
                 send_email_token(
-                    email, raw_code, "verification_code", expires_at=verification.expires_at
+                    email,
+                    raw_code,
+                    "verification_code",
+                    expires_at=verification.expires_at,
                 )
         except Exception as exc:
             logger.error("Registration code issuance failed (%s)", type(exc).__name__)
@@ -61,13 +64,17 @@ class RegistrationService:
     def confirm_registration(email, code, name, password):
         email = User.objects.normalize_email(email)
         with transaction.atomic():
-            user = User.objects.select_for_update(no_key=True).filter(
-                email=email,
-                is_active=False,
-                password="",
-                is_staff=False,
-                is_superuser=False,
-            ).first()
+            user = (
+                User.objects.select_for_update(no_key=True)
+                .filter(
+                    email=email,
+                    is_active=False,
+                    password="",
+                    is_staff=False,
+                    is_superuser=False,
+                )
+                .first()
+            )
             verification = (
                 EmailVerification.objects.select_for_update().filter(user=user).first()
             )

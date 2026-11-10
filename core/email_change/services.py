@@ -27,7 +27,9 @@ class EmailChangeService:
         try:
             with transaction.atomic():
                 current = (
-                    User.objects.select_for_update(no_key=True).filter(pk=user.pk).first()
+                    User.objects.select_for_update(no_key=True)
+                    .filter(pk=user.pk)
+                    .first()
                 )
                 require_unchanged_user(user, current)
                 raw_code = f"{secrets.randbelow(1000000):06d}"

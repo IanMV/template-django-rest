@@ -14,7 +14,11 @@ class UserService:
     def deactivate_user(requesting_user: User, current_password: str):
         require_current_password(requesting_user, current_password)
         with transaction.atomic():
-            current = User.objects.select_for_update(no_key=True).filter(pk=requesting_user.pk).first()
+            current = (
+                User.objects.select_for_update(no_key=True)
+                .filter(pk=requesting_user.pk)
+                .first()
+            )
             require_unchanged_user(requesting_user, current)
             requesting_user = current
             requesting_user.deactivate()

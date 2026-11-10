@@ -41,7 +41,9 @@ class Command(BaseCommand):
                 expired = expired.exclude(
                     user__is_active=False, user__password="", used=False
                 )
-            while ids := list(expired.order_by("pk").values_list("pk", flat=True)[:500]):
+            while ids := list(
+                expired.order_by("pk").values_list("pk", flat=True)[:500]
+            ):
                 expired.filter(pk__in=ids).delete()
         call_command("clearsessions", verbosity=options["verbosity"])
         self.stdout.write(f"Abandoned registrations removed: {total}")

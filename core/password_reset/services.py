@@ -23,9 +23,11 @@ class PasswordResetService:
         reset_code = None
         try:
             with transaction.atomic():
-                user = User.objects.select_for_update(no_key=True).filter(
-                    email=email, is_active=True
-                ).first()
+                user = (
+                    User.objects.select_for_update(no_key=True)
+                    .filter(email=email, is_active=True)
+                    .first()
+                )
                 if user is None:
                     return
                 raw_code = f"{secrets.randbelow(1000000):06d}"
@@ -51,9 +53,11 @@ class PasswordResetService:
     def confirm_reset(email, code, new_password):
         email = User.objects.normalize_email(email)
         with transaction.atomic():
-            user = User.objects.select_for_update(no_key=True).filter(
-                email=email, is_active=True
-            ).first()
+            user = (
+                User.objects.select_for_update(no_key=True)
+                .filter(email=email, is_active=True)
+                .first()
+            )
             reset_code = (
                 PasswordReset.objects.select_for_update().filter(user=user).first()
             )
