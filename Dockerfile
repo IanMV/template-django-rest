@@ -13,8 +13,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin django \
-    && mkdir -p /app/staticfiles /var/lib/celery \
-    && chown -R django:django /app/staticfiles /var/lib/celery
+    && mkdir -p /app/staticfiles \
+    && chown django:django /app/staticfiles
 COPY --from=dependencies /opt/venv /opt/venv
 COPY app/ app/
 COPY core/ core/

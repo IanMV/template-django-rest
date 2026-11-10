@@ -1,7 +1,7 @@
 [project]
 name = "sistema-autenticacao-django-rest"
 version = "0.1.0"
-description = ""
+description = "Small Django REST backend with cookie sessions and email account flows"
 authors = [
   { name = "Ian Matheus Veiga", email = "ianmatheusv54@gmail.com" },
 ]
@@ -22,7 +22,6 @@ dev = [
     "pre-commit>=4.6.2",
     "pyright>=1.1.411",
     "ruff>=0.16.2",
-    "pip-audit>=2.10.1",
 ]
 lint = [
   "ruff>=0.16.2",
@@ -51,20 +50,16 @@ format = "ruff format"
 migrations-check = "python manage.py makemigrations --check --dry-run"
 schema-check = "python manage.py spectacular --validate --fail-on-warn --file /dev/null"
 deploy-check = { cmd = "python manage.py check --deploy", env = { DJANGO_SETTINGS_MODULE = "app.settings.prod" } }
-verify = { composite = ["check", "migrations-check", "schema-check", "lint", "test"] }
+cleanup = "python manage.py cleanup_auth"
 secret = "python -c 'import secrets; print(secrets.token_hex(32))'"
-"compose:dev" = "docker compose --env-file .env.dev -f docker-compose.dev.yml"
-"compose:full" = "docker compose --env-file .env.integrated -f docker-compose.integrated.yml"
-"compose:prod" = "docker compose --env-file .env.prod -f docker-compose.yml"
+"compose:dev" = "docker compose -f docker-compose.dev.yml"
+"compose:prod" = "docker compose -f docker-compose.yml"
 "dev:up" = { composite = ["compose:dev up -d --build"] }
 "dev:down" = { composite = ["compose:dev down"] }
 "dev:logs" = { composite = ["compose:dev logs -f app"] }
-"full:up" = { composite = ["compose:full up -d --build"] }
-"full:down" = { composite = ["compose:full down"] }
-"full:logs" = { composite = ["compose:full logs -f app worker beat"] }
 "prod:up" = { composite = ["compose:prod up -d --build"] }
 "prod:down" = { composite = ["compose:prod down"] }
-"prod:logs" = { composite = ["compose:prod logs -f app worker beat proxy"] }
+"prod:logs" = { composite = ["compose:prod logs -f app proxy"] }
 "prod:check" = { composite = ["compose:prod run --rm --no-deps app python manage.py check --deploy"] }
 
 [tool.pyright]
