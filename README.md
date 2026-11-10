@@ -99,13 +99,15 @@ O `pdm.lock` já está atualizado. `pdm sync` instala as versões travadas; não
 | `http://localhost:8000/api/docs/schema/` | Schema OpenAPI para ferramentas |
 | `http://localhost:8000/admin/` | Admin do Django; crie uma conta com `pdm run python manage.py createsuperuser` |
 | `db.sqlite3` | Banco local persistente; parar o servidor não apaga os dados |
-| Terminal do servidor | E-mails e códigos locais; use apenas contas de teste |
+| Terminal do servidor | E-mails e códigos locais por padrão; use apenas contas de teste |
 
 A raiz `/` não tem uma página de aplicação; um `404` ali não significa que a API está fora do ar. Abra `/api/login/` para conferir.
 
 Os scripts `dev`, `migrate`, `check` e `cleanup` carregam `.env` pelo PDM e selecionam explicitamente `app.settings.dev`, mesmo que o arquivo ou o terminal indique outro perfil. Esse perfil usa uma chave pública de desenvolvimento e cookies adequados a HTTP local. **Nunca publique esse perfil.** Carregar variáveis de produção não substitui as configurações fixas de `dev.py`. O Django chamado diretamente não carrega `.env` automaticamente.
 
 Para uma SPA local, use `http://localhost:5173` ou `http://localhost:3000`. Não misture `localhost` com `127.0.0.1` no navegador. Caso use outra origem, ajuste `CORS_ALLOWED_ORIGINS` e `CSRF_TRUSTED_ORIGINS` em `app/settings/dev.py`.
+
+**E-mail no desenvolvimento:** o padrão é `django.core.mail.backends.console.EmailBackend`, sem conexão SMTP. Para envio real, selecione `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend` e configure `EMAIL_HOST`, autenticação e `DEFAULT_FROM_EMAIL` no ambiente. SMTP usa porta 587 com STARTTLS por padrão; para TLS implícito, ajuste `EMAIL_PORT=465`, `EMAIL_USE_TLS=false` e `EMAIL_USE_SSL=true`. As opções de conexão só são aplicadas ao backend SMTP, com timeout de dez segundos. Cuidado: como os scripts locais carregam o mesmo `.env`, selecionar SMTP pode enviar mensagens reais durante o desenvolvimento. A produção continua usando SMTP obrigatoriamente.
 
 **Docker é uma alternativa, não um segundo passo obrigatório:** `pdm run dev:up`, `pdm run dev:logs` e `pdm run dev:down`. O contêiner compartilha o código e o SQLite com a pasta do projeto e aplica migrações ao iniciar. Não execute migrações concorrentes nesse arquivo. Ajuste `LOCAL_UID`/`LOCAL_GID` no ambiente do terminal se necessário. O fluxo Docker não foi executado na validação local desta revisão.
 
