@@ -1,27 +1,15 @@
-import os
-
-from dotenv import load_dotenv
-
 from .base import *  # noqa: F403
 
-load_dotenv(BASE_DIR / ".env")  # noqa: F405
-
 DEBUG = True
-CELERY_TASK_ALWAYS_EAGER = True
-DEBUG_PROPAGATE_EXCEPTIONS = False
-ALLOWED_HOSTS = []
-SECRET_KEY = os.getenv("SECRET_KEY") or (
-    "django-insecure-dev-fallback-secret-key-with-at-least-thirty-two-bytes-12345"
-)
+SECRET_KEY = "django-insecure-local-development-only-not-for-public-use"
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+CORS_ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",  # noqa: F405
-        "TIME_ZONE": "UTC",
-    }
-}
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
     },
 }
+MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
+DEFAULT_FROM_EMAIL = "noreply@localhost"

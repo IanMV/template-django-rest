@@ -1,47 +1,9 @@
-from datetime import timedelta
 from pathlib import Path
-
-from celery.schedules import crontab
-
-# from django.contrib import messages
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 NUM_PROXIES = 0
-SESSION_CACHE_TTL = 60
-SESSION_ABSOLUTE_LIFETIME = timedelta(days=30)
-SESSION_REMEMBERED_ABSOLUTE_LIFETIME = timedelta(days=30)
-SESSION_REMEMBERED_INACTIVITY_LIFETIME = timedelta(days=7)
-AUDIT_RETENTION_DAYS = None
-CELERY_BROKER_URL = "memory://"
-CELERY_TASK_SERIALIZER = "json"
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_IGNORE_RESULT = True
-CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BEAT_SCHEDULE = {
-    "daily-maintenance-purge": {
-        "task": "core.registration.tasks.daily_maintenance_purge_task",
-        "schedule": crontab(hour=3, minute=0),
-    }
-}
-CACHES = {
-    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
-    "sessions": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "sessions",
-        "KEY_PREFIX": "sessions",
-    },
-}
-APPEND_SLASH = True
-CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:8000",
-]
-CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_NAME = "csrftoken"
-CSRF_COOKIE_SAMESITE = "Lax"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -49,22 +11,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "drf_spectacular",
     "rest_framework",
-    "rest_framework_simplejwt",
-    "rest_framework_simplejwt.token_blacklist",
     "core",
 ]
-LANGUAGES = [
-    ("en", "English"),
-]
-LANGUAGES_BIDI = []
-LOGGING = {}
-STATIC_URL = "static/"
-MEDIA_ROOT = BASE_DIR / "media"
-MEDIA_URL = "/media/"
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -73,6 +27,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 ROOT_URLCONF = "app.urls"
+WSGI_APPLICATION = "app.wsgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -87,9 +42,11 @@ TEMPLATES = [
         },
     },
 ]
+LANGUAGE_CODE = "en-us"
 TIME_ZONE = "America/Sao_Paulo"
-CELERY_TIMEZONE = TIME_ZONE
-WSGI_APPLICATION = "app.wsgi.application"
+USE_TZ = True
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 AUTH_USER_MODEL = "core.User"
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -98,68 +55,64 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-        "OPTIONS": {
-            "min_length": 9,
-        },
+        "OPTIONS": {"min_length": 9},
     },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "core.auth.authenticate.CustomAuthentication",
-    ],
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE = 24 * 60 * 60
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_DOMAIN = None
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_SAVE_EVERY_REQUEST = False
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
+CORS_ALLOW_CREDENTIALS = True
+CORS_URLS_REGEX = r"^/api/.*$"
+CACHES = {
+    # shortcut: limits are per process and reset on restart; use shared storage for global enforcement.
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
 }
-SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
-    "UPDATE_LAST_LOGIN": True,
-    "CHECK_REVOKE_TOKEN": True,
-    "CHECK_USER_IS_ACTIVE": True,
-    "AUTH_COOKIE": "access_token",
-    "AUTH_COOKIE_DOMAIN": None,
-    "AUTH_COOKIE_SECURE": False,
-    "AUTH_COOKIE_HTTP_ONLY": True,
-    "AUTH_COOKIE_PATH": "/",
-    "AUTH_COOKIE_SAMESITE": "Lax",
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["core.auth.authenticate.CustomAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 SPECTACULAR_SETTINGS = {
     "TITLE": "Authentication API",
+    "VERSION": "2.0.0",
     "DESCRIPTION": (
-        "Use the Swagger UI on the same origin as the API. Start with GET /api/login/ "
-        "to receive the CSRF cookie; POST /api/login/ with credentials to receive "
-        "HttpOnly access/refresh cookies. The browser sends cookies automatically; "
-        "send the csrftoken value in X-CSRFTOKEN for unsafe requests. Swagger UI "
-        "injects the CSRF header for same-origin requests. Do not paste HttpOnly "
-        "JWTs into Authorize: authenticate through the login operation instead."
+        "Call GET /api/login/ with credentials to obtain csrfToken. Send it as "
+        "X-CSRFTOKEN on mutations. Login sets an HttpOnly session cookie valid for "
+        "24 hours and returns a rotated csrfToken. Never copy the session cookie "
+        "into JavaScript. Cross-site cookies depend on browser policy."
     ),
-    "VERSION": "1.0.0",
     "COMPONENT_SPLIT_REQUEST": True,
-    "TAGS": [
-        {"name": "auth", "description": "CSRF bootstrap, login, refresh and logout."},
-        {"name": "sessions", "description": "List and deactivate device sessions."},
-        {
-            "name": "registration",
-            "description": "Request, verify and confirm registration.",
-        },
-        {
-            "name": "password-reset",
-            "description": "Request, verify and confirm password reset.",
-        },
-        {
-            "name": "email-change",
-            "description": "Request, verify and confirm an email change.",
-        },
-        {"name": "user", "description": "Current account and user list."},
-    ],
-    "AUTHENTICATION_WHITELIST": [
-        "core.auth.authenticate.CustomAuthentication",
-    ],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    "AUTHENTICATION_WHITELIST": ["core.auth.authenticate.CustomAuthentication"],
+    "SWAGGER_UI_SETTINGS": """{
+        deepLinking: true,
+        persistAuthorization: false,
+        requestInterceptor: async (request) => {
+            if (new URL(request.url, location.href).origin !== location.origin) return request;
+            request.credentials = 'same-origin';
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) {
+                const response = await fetch('/api/login/', {
+                    credentials: 'same-origin', cache: 'no-store'
+                });
+                if (!response.ok) throw new Error('CSRF bootstrap failed');
+                request.headers['X-CSRFTOKEN'] = (await response.json()).csrfToken;
+            }
+            return request;
+        }
+    }""",
+}
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"core": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }

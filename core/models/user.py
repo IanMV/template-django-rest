@@ -1,6 +1,5 @@
 import uuid
 
-from django.conf import settings
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -8,6 +7,7 @@ from django.contrib.auth.models import (
 )
 from django.db import models
 from django.db.models.functions import Lower, Trim
+from django.utils.crypto import salted_hmac
 from django.utils.translation import gettext_lazy as _
 
 
@@ -51,6 +51,8 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    session_version = models.PositiveBigIntegerField(default=0, editable=False)
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -131,22 +133,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.is_active = False
         self.save(update_fields=["is_active", "updated_at"])
 
-
-class UserSession(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sessions"
-    )
-    access_jti = models.CharField(max_length=255, unique=True)
-    refresh_jti = models.CharField(max_length=255, unique=True)
-    device_name = models.CharField(max_length=255)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_activity = models.DateTimeField(auto_now=True)
-    is_active = models.BooleanField(default=True)
-    remember_me = models.BooleanField(
-        default=False,
-        help_text=_("Refresh tokens remain valid for seven days of inactivity."),
-    )
-
-    def __str__(self):
-        return f"{self.user} - {self.device_name}"
+    def _get_session_auth_hash(self, secret=None):
+        # Include account state so reactivation cannot restore revoked sessions.
+        return salted_hmac(
+            "core.User.session",
+            f"{self.password}:{self.email}:{self.is_active}:{self.session_version}",
+            secret=secret,
+            algorithm="sha256",
+        ).hexdigest()

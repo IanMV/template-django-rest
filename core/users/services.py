@@ -11,8 +11,8 @@ class UserService:
         return User.objects.filter(is_active=True).order_by("-created_at")
 
     @staticmethod
-    def deactivate_user(requesting_user: User, current_password: str, request=None):
-        require_current_password(requesting_user, current_password, request=request, action="deactivate_self")
+    def deactivate_user(requesting_user: User, current_password: str):
+        require_current_password(requesting_user, current_password)
         with transaction.atomic():
             current = User.objects.select_for_update(no_key=True).filter(pk=requesting_user.pk).first()
             require_unchanged_user(requesting_user, current)

@@ -9,19 +9,10 @@ class RegistrationRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
 
 
-class RegistrationVerifySerializer(serializers.Serializer):
-    email = serializers.EmailField(required=True)
-    code = serializers.CharField(
-        max_length=6,
-        min_length=6,
-        required=True,
-        help_text="Six-digit code sent to the registration email.",
-    )
-
-
 class RegistrationConfirmSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     code = serializers.CharField(
+        validators=[RegexValidator(r"\A[0-9]{6}\Z", message="Enter six digits.")],
         max_length=6,
         min_length=6,
         required=True,

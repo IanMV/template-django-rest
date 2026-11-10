@@ -14,17 +14,9 @@ class EmailChangeRequestSerializer(serializers.Serializer):
     )
 
 
-class EmailChangeVerifySerializer(serializers.Serializer):
-    code = serializers.CharField(
-        max_length=6,
-        min_length=6,
-        required=True,
-        help_text="Six-digit code sent to the new email address.",
-    )
-
-
 class EmailChangeConfirmSerializer(serializers.Serializer):
     code = serializers.CharField(
+        validators=[RegexValidator(r"\A[0-9]{6}\Z", message="Enter six digits.")],
         max_length=6,
         min_length=6,
         required=True,

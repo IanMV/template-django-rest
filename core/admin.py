@@ -7,7 +7,7 @@ from core.auth.services import SessionService
 from core.models.email_change import EmailChange
 from core.models.email_verification import EmailVerification
 from core.models.password_reset import PasswordReset
-from core.models.user import User, UserSession
+from core.models.user import User
 
 
 class CustomUserCreationForm(UserCreationForm):
@@ -118,7 +118,7 @@ class UserAdmin(UserAdminFromDjango):
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
-        if not obj.is_active:
+        if change and {"email", "is_active"}.intersection(form.changed_data):
             SessionService.revoke_all_sessions(obj)
 
 
@@ -234,43 +234,3 @@ class EmailChangeAdmin(OneTimeCodeAdmin):
     )
 
     search_fields = OneTimeCodeAdmin.search_fields + ("new_email",)
-
-
-@admin.register(UserSession)
-class UserSessionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "user",
-        "ip_address",
-        "device_name",
-        "is_active",
-        "last_activity",
-        "created_at",
-    )
-    search_fields = ("user__email", "user__name", "ip_address", "device_name")
-    list_filter = ("is_active",)
-    readonly_fields = (
-        "id",
-        "user",
-        "access_jti",
-        "refresh_jti",
-        "device_name",
-        "ip_address",
-        "created_at",
-        "last_activity",
-        "is_active",
-    )
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def delete_model(self, request, obj):
-        SessionService.deactivate_session(obj.user, obj.pk)
-
-    def delete_queryset(self, request, queryset):
-        for session in queryset:
-            SessionService.deactivate_session(session.user, session.pk)
-
