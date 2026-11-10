@@ -99,7 +99,7 @@ SPECTACULAR_SETTINGS = {
         requestInterceptor: async (request) => {
             if (new URL(request.url, location.href).origin !== location.origin) return request;
             request.credentials = 'same-origin';
-            if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) {
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
                 const response = await fetch('/api/login/', {
                     credentials: 'same-origin', cache: 'no-store'
                 });
