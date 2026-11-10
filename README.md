@@ -254,6 +254,7 @@ Testes, lint, formatação e verificações de migrações/schema não carregam 
 | --- | --- |
 | Preparação CSRF, login e troca de usuário | `test_auth.py` |
 | Expiração absoluta, admin, logout e revogação | `test_sessions.py` |
+| Invalidação de códigos pelo admin e concorrência com operações da API | `test_admin_security.py` |
 | Fluxo completo com cookies, recarga, origem e preflight CORS | `test_http_flow.py` |
 | Contrato das rotas, OpenAPI e validação de OTP | `test_contracts.py` |
 | Cadastro, recuperação, e-mail, permissões e desativação | `test_registration.py`, `test_password_reset.py`, `test_email_change.py`, `test_users.py` |
@@ -271,9 +272,11 @@ Para concorrência, use um **PostgreSQL descartável e dedicado aos testes**, co
 pdm run test:postgres
 ```
 
-Esse comando cria e remove um banco de teste; nunca o aponte para produção. O serviço esperado fica em `127.0.0.1:5432`; os parâmetros estão no arquivo de configuração dos testes. A CI provisiona seu próprio serviço PostgreSQL, sem Redis. No SQLite, os três testes que precisam de concorrência PostgreSQL são ignorados explicitamente, não simulados como aprovados.
+Esse comando cria e remove um banco de teste; nunca o aponte para produção. O serviço esperado fica em `127.0.0.1:5432`; os parâmetros estão no arquivo de configuração dos testes. A CI provisiona seu próprio serviço PostgreSQL, sem Redis. No SQLite, os testes que precisam de bloqueios/concorrência PostgreSQL são ignorados explicitamente, não simulados como aprovados.
 
 **Estado da validação:** suíte SQLite aprovada localmente, lock consistente, lint/formatação aprovados, nenhuma migração ausente e schema validado sem avisos. O mantenedor confirmou a aprovação da CI, incluindo a suíte PostgreSQL e os três testes de concorrência. Navegador real, SMTP real, contêineres e restauração de backups ainda exigem validação funcional própria; a aprovação dos testes automatizados não comprova esses cenários.
+
+**Correção posterior no admin:** a invalidação de códigos na troca de e-mail e a leitura sob bloqueio nas alterações administrativas receberam testes de regressão em `test_admin_security.py`. Nesta alteração foram autorizadas somente verificações estáticas; esses testes e a suíte atualizada ainda precisam ser executados. A aprovação anterior da CI não valida estas novas correções.
 
 ## 6. Publicar com segurança
 
@@ -333,7 +336,7 @@ Este é o resumo técnico da mesma trilha, não uma especificação paralela nem
 - **Expiração:** `core/auth/signals.py`, sinal `user_logged_in`, fixa login + 24 horas em API e admin; não há renovação por atividade.
 - **Hash da sessão:** `User._get_session_auth_hash` inclui senha, e-mail, estado ativo e `session_version`.
 - **Revogação geral interna:** `SessionService.revoke_all_sessions` incrementa a versão atomicamente, sem varrer sessões; registros antigos permanecem até a limpeza.
-- **Admin:** alterações de e-mail/estado via `UserAdmin` incrementam a versão. Não existe admin de dispositivos JWT.
+- **Admin:** alterações de e-mail/estado via `UserAdmin` incrementam a versão; trocar e-mail exclui os códigos pendentes. POSTs de alteração releem o usuário sob bloqueio, incluindo a troca de senha em transação. Regressões em `test_admin_security.py` aguardam execução.
 - **Concorrência:** `require_unchanged_user` revalida estado sob bloqueio; `select_for_update` exige PostgreSQL para reproduzir a proteção real.
 - **CSRF:** GET `/api/login/` retorna `{csrfToken}` sem cache; POST retorna `{detail, csrfToken}` rotacionado; SPA usa `credentials: include` e `X-CSRFTOKEN`.
 - **Identidade:** e-mails normalizados integralmente para minúsculas; constraint protege escritas diretas. Senhas preservam espaços; vazias/só espaços são rejeitadas.

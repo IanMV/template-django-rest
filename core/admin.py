@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as UserAdminFromDjango
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.db import router, transaction
 from django.utils.translation import gettext_lazy as _
 
 from core.auth.services import SessionService
@@ -116,8 +117,28 @@ class UserAdmin(UserAdminFromDjango):
         ),
     )
 
+    def get_object(self, request, object_id, from_field=None):
+        obj = super().get_object(request, object_id, from_field)
+        if obj is not None and request.method == "POST":
+            # Reload under lock before forms can retain stale authentication state.
+            return (
+                self.get_queryset(request)
+                .select_for_update(no_key=True)
+                .filter(pk=obj.pk)
+                .first()
+            )
+        return obj
+
+    def user_change_password(self, request, id, form_url=""):
+        with transaction.atomic(using=router.db_for_write(self.model)):
+            return super().user_change_password(request, id, form_url)
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
+        if change and "email" in form.changed_data:
+            PasswordReset.objects.filter(user=obj).delete()
+            EmailChange.objects.filter(user=obj).delete()
+            EmailVerification.objects.filter(user=obj).delete()
         if change and {"email", "is_active"}.intersection(form.changed_data):
             SessionService.revoke_all_sessions(obj)
 
