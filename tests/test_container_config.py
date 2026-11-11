@@ -62,3 +62,16 @@ class ContainerConfigurationTests(SimpleTestCase):
         self.assertIn("USER django", dockerfile)
         self.assertNotIn("runserver", dockerfile)
         self.assertNotIn("manage.py migrate", dockerfile)
+
+    def test_smtp_routes_have_a_separate_worker_pool(self):
+        upstream = (ROOT / "deploy/nginx/snippets/upstream.conf").read_text()
+        locations = (ROOT / "deploy/nginx/snippets/locations.conf").read_text()
+        compose = (ROOT / "docker-compose.yml").read_text()
+        self.assertIn("server issuance:8000 resolve;", upstream)
+        self.assertIn("default django;", upstream)
+        for flow in ("registration", "password-reset", "email-change"):
+            self.assertIn(f"/api/{flow}/request/ django_issuance;", upstream)
+            self.assertNotIn(f"/api/{flow}/confirm/ django_issuance;", upstream)
+        self.assertIn("proxy_pass http://$django_upstream;", locations)
+        self.assertIn("MAIL_WEB_CONCURRENCY:-2", compose)
+        self.assertIn("issuance: {condition: service_started}", compose)
