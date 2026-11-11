@@ -340,16 +340,76 @@ class AdminStateTests(ApiCase):
             .value()
         )
 
-    def submit(self, token):
+    def submit(self, token, **overrides):
+        data = {
+            "email": self.owner.email,
+            "is_active": "on",
+            "name": "Edited",
+            "security_state": token,
+            **overrides,
+        }
         return self.client.post(
             self.path,
-            {
-                "email": self.owner.email,
-                "is_active": "on",
-                "name": "Edited",
-                "security_state": token,
-            },
+            data,
         )
+
+    def test_stale_form_cannot_restore_revoked_privileges(self):
+        from django.contrib.auth.models import Group, Permission
+
+        for field in ("is_staff", "is_superuser", "groups", "user_permissions"):
+            with self.subTest(field=field):
+                self.owner.refresh_from_db()
+                if field in ("is_staff", "is_superuser"):
+                    User.objects.filter(pk=self.owner.pk).update(**{field: True})
+                    submitted = "on"
+                else:
+                    related = (
+                        Group.objects.create(name="Protected")
+                        if field == "groups"
+                        else Permission.objects.get(
+                            content_type__app_label="core", codename="view_user"
+                        )
+                    )
+                    getattr(self.owner, field).add(related)
+                    submitted = [str(related.pk)]
+                token = self.token()
+                self.assertEqual(
+                    self.submit(self.token(), name="Revoked").status_code, 302
+                )
+                response = self.submit(token, **{field: submitted})
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(
+                    "security state changed",
+                    str(response.context["adminform"].form.errors),
+                )
+                self.owner.refresh_from_db()
+                self.assertEqual(self.owner.name, "Revoked")
+                if field in ("is_staff", "is_superuser"):
+                    self.assertFalse(getattr(self.owner, field))
+                else:
+                    self.assertFalse(getattr(self.owner, field).exists())
+                User.objects.filter(pk=self.owner.pk).update(name="Example Person")
+
+    def test_fresh_form_can_edit_privileges(self):
+        from django.contrib.auth.models import Group, Permission
+
+        group = Group.objects.create(name="Allowed")
+        permission = Permission.objects.get(
+            content_type__app_label="core", codename="view_user"
+        )
+        response = self.submit(
+            self.token(),
+            is_staff="on",
+            is_superuser="on",
+            groups=[str(group.pk)],
+            user_permissions=[str(permission.pk)],
+        )
+        self.assertEqual(response.status_code, 302)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.is_staff)
+        self.assertTrue(self.owner.is_superuser)
+        self.assertEqual(list(self.owner.groups.all()), [group])
+        self.assertEqual(list(self.owner.user_permissions.all()), [permission])
 
     def test_stale_form_does_not_reactivate_user_or_partially_save(self):
         from core.users.services import UserService

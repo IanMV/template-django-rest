@@ -82,7 +82,16 @@ class CustomUserChangeForm(UserChangeForm):
 
     @staticmethod
     def state_for(user):
-        return [str(user.pk), user.email, user.is_active, user.session_version]
+        return [
+            str(user.pk),
+            user.email,
+            user.is_active,
+            user.session_version,
+            user.is_staff,
+            user.is_superuser,
+            list(user.groups.order_by("pk").values_list("pk", flat=True)),
+            list(user.user_permissions.order_by("pk").values_list("pk", flat=True)),
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
