@@ -20,7 +20,7 @@ class IssuanceLogSafetyTests(ApiTransactionCase):
         flows = (
             ("registration", EmailVerification, 503),
             ("password-reset", PasswordReset, 200),
-            ("email-change", EmailChange, 503),
+            ("email-change", EmailChange, 200),
         )
         for kind in ("database", "queue", "cleanup"):
             for index, (flow, model, status) in enumerate(flows):

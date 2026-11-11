@@ -6,7 +6,10 @@ class CustomAuthentication(SessionAuthentication):
     def authenticate(self, request):
         # Public mutations need CSRF too, especially login and code issuance.
         self.enforce_csrf(request)
-        return super().authenticate(request)
+        authenticated = super().authenticate(request)
+        if authenticated is not None and not authenticated[0].has_usable_password():
+            return None
+        return authenticated
 
     def authenticate_header(self, request):
         return "Session"

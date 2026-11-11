@@ -364,7 +364,7 @@ class EmailChangeTests(ApiCase):
 
 
 class EmailChangeDeliveryFailureTests(ApiTransactionCase):
-    def test_delivery_failure_returns_503_without_new_code(self):
+    def test_delivery_failure_is_uniform_without_new_code(self):
         user = self.create_user()
         self.login(user)
         with patch(
@@ -376,7 +376,7 @@ class EmailChangeDeliveryFailureTests(ApiTransactionCase):
                 {"new_email": "new@example.com", "password": self.password},
                 format="json",
             )
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 200)
         self.assertFalse(EmailChange.objects.filter(user=user).exists())
 
 

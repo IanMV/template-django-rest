@@ -1,7 +1,9 @@
 import logging
 import secrets
+from datetime import timedelta
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from core.auth.rate_limit import limit_code_requests
@@ -21,12 +23,16 @@ class RegistrationService:
         verification = None
         try:
             with transaction.atomic():
-                user, _ = User.objects.get_or_create(
+                user, _ = User.objects.select_for_update(no_key=True).get_or_create(
                     email=email, defaults={"is_active": False}
                 )
-                user = User.objects.select_for_update(no_key=True).get(pk=user.pk)
                 if not user.is_active:
                     if user.password or user.is_staff or user.is_superuser:
+                        return
+                    if EmailVerification.objects.filter(
+                        user=user,
+                        created_at__gt=timezone.now() - timedelta(seconds=60),
+                    ).exists():
                         return
                     raw_code = f"{secrets.randbelow(1000000):06d}"
                     EmailVerification.objects.filter(user=user).delete()

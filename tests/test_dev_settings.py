@@ -8,6 +8,14 @@ from django.test import SimpleTestCase
 
 
 class DevelopmentMailSettingsTests(SimpleTestCase):
+    def test_empty_or_whitespace_sender_uses_development_fallback(self):
+        for value in ("", "   ", " sender@example.com "):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.configured(DEFAULT_FROM_EMAIL=value)["DEFAULT_FROM_EMAIL"],
+                    value.strip() or "noreply@localhost",
+                )
+
     def configured(self, **values):
         with patch(
             "os.getenv", side_effect=lambda key, default=None: values.get(key, default)
@@ -69,3 +77,33 @@ class DevelopmentMailSettingsTests(SimpleTestCase):
                 EMAIL_USE_TLS="true",
                 EMAIL_USE_SSL="true",
             )
+        with self.assertRaisesMessage(ImproperlyConfigured, "not both"):
+            self.configured(
+                EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+                EMAIL_HOST="smtp.example.com",
+                EMAIL_USE_TLS=" true ",
+                EMAIL_USE_SSL=" TRUE ",
+            )
+
+    def test_smtp_boolean_settings_strip_spaces_and_reject_invalid_values(self):
+        configured = self.configured(
+            EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+            EMAIL_HOST="smtp.example.com",
+            EMAIL_USE_TLS=" true ",
+            EMAIL_USE_SSL=" false ",
+        )
+        options = configured["MAILERS"]["default"]["OPTIONS"]
+        self.assertIs(options["use_tls"], True)
+        self.assertIs(options["use_ssl"], False)
+
+        for key in ("EMAIL_USE_TLS", "EMAIL_USE_SSL"):
+            for value in ("yes", "no", "1", "0", "", "   ", "invalid"):
+                with (
+                    self.subTest(key=key, value=value),
+                    self.assertRaisesMessage(ImproperlyConfigured, key),
+                ):
+                    self.configured(
+                        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+                        EMAIL_HOST="smtp.example.com",
+                        **{key: value},
+                    )

@@ -4,6 +4,28 @@ from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
 
+
+def _env_bool(name, default):
+    value = (os.getenv(name, default) or "").strip().lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ImproperlyConfigured(f"{name} must be 'true' or 'false'.")
+
+
+def _env_port(name, default="587"):
+    try:
+        port = int(os.getenv(name, default))
+        if not (1 <= port <= 65535):
+            raise ValueError
+    except ValueError:
+        raise ImproperlyConfigured(
+            f"{name} must be an integer between 1 and 65535."
+        ) from None
+    return port
+
+
 DEBUG = True
 SECRET_KEY = "django-insecure-local-development-only-not-for-public-use"
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
@@ -25,12 +47,12 @@ MAILERS = {
 }
 if MAILERS["default"]["BACKEND"] == "django.core.mail.backends.smtp.EmailBackend":
     MAILERS["default"]["OPTIONS"] = {
-        "host": os.getenv("EMAIL_HOST", ""),
-        "port": int(os.getenv("EMAIL_PORT", "587")),
+        "host": os.getenv("EMAIL_HOST", "").strip(),
+        "port": _env_port("EMAIL_PORT", "587"),
         "username": os.getenv("EMAIL_HOST_USER", ""),
         "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
-        "use_tls": os.getenv("EMAIL_USE_TLS", "true").lower() == "true",
-        "use_ssl": os.getenv("EMAIL_USE_SSL", "false").lower() == "true",
+        "use_tls": _env_bool("EMAIL_USE_TLS", "true"),
+        "use_ssl": _env_bool("EMAIL_USE_SSL", "false"),
         "timeout": 10,
     }
     if not MAILERS["default"]["OPTIONS"]["host"]:
@@ -40,4 +62,6 @@ if MAILERS["default"]["BACKEND"] == "django.core.mail.backends.smtp.EmailBackend
         and MAILERS["default"]["OPTIONS"]["use_ssl"]
     ):
         raise ImproperlyConfigured("Choose EMAIL_USE_TLS or EMAIL_USE_SSL, not both.")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
+DEFAULT_FROM_EMAIL = (
+    os.getenv("DEFAULT_FROM_EMAIL") or ""
+).strip() or "noreply@localhost"

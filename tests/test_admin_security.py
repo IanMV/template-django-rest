@@ -30,9 +30,18 @@ class AdminEmailSecurityTests(ApiCase):
             record.save()
 
     def change_email(self):
+        path = f"/admin/core/user/{self.owner.pk}/change/"
+        token = (
+            self.client.get(path).context["adminform"].form["security_state"].value()
+        )
         return self.client.post(
-            f"/admin/core/user/{self.owner.pk}/change/",
-            {"email": "new@example.com", "name": self.owner.name, "is_active": "on"},
+            path,
+            {
+                "email": "new@example.com",
+                "name": self.owner.name,
+                "is_active": "on",
+                "security_state": token,
+            },
         )
 
     def test_admin_email_change_invalidates_all_pending_codes(self):
@@ -65,6 +74,101 @@ class AdminEmailSecurityTests(ApiCase):
         self.assertEqual(self.owner.email, "person@example.com")
         for model in (PasswordReset, EmailChange, EmailVerification):
             self.assertTrue(model.objects.filter(user=self.owner).exists())
+
+    def change_password(self, **overrides):
+        data = {
+            "password1": "AdminSetPass!7395",
+            "password2": "AdminSetPass!7395",
+            "usable_password": "true",
+            **overrides,
+        }
+        return self.client.post(
+            f"/admin/core/user/{self.owner.pk}/password/",
+            data,
+        )
+
+    def test_admin_password_change_invalidates_pending_codes_and_prevents_reuse(self):
+        self.assertEqual(self.change_password().status_code, 302)
+        for model in (PasswordReset, EmailChange, EmailVerification):
+            self.assertFalse(model.objects.filter(user=self.owner).exists())
+        public = self.new_client()
+        self.bootstrap(public)
+        response = public.post(
+            "/api/password-reset/confirm/",
+            {
+                "email": self.owner.email,
+                "code": "123456",
+                "new_password": "AttackerPass!7395",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.check_password("AdminSetPass!7395"))
+
+    def test_admin_disable_password_invalidates_pending_codes(self):
+        response = self.client.post(
+            f"/admin/core/user/{self.owner.pk}/password/",
+            {"usable_password": "false", "unset-password": "1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.owner.refresh_from_db()
+        self.assertFalse(self.owner.has_usable_password())
+        for model in (PasswordReset, EmailChange, EmailVerification):
+            self.assertFalse(model.objects.filter(user=self.owner).exists())
+
+    def test_admin_password_change_and_code_invalidation_roll_back_together(self):
+        with patch.object(
+            PasswordReset.objects,
+            "filter",
+            side_effect=RuntimeError("delete failed"),
+        ):
+            with self.assertRaisesMessage(RuntimeError, "delete failed"):
+                self.change_password()
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.check_password(self.password))
+        for model in (PasswordReset, EmailChange, EmailVerification):
+            self.assertTrue(model.objects.filter(user=self.owner).exists())
+
+    def test_admin_deactivation_invalidates_pending_codes(self):
+        path = f"/admin/core/user/{self.owner.pk}/change/"
+        token = (
+            self.client.get(path).context["adminform"].form["security_state"].value()
+        )
+        response = self.client.post(
+            path,
+            {
+                "email": self.owner.email,
+                "name": self.owner.name,
+                "security_state": token,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.owner.refresh_from_db()
+        self.assertFalse(self.owner.is_active)
+        for model in (PasswordReset, EmailChange, EmailVerification):
+            self.assertFalse(model.objects.filter(user=self.owner).exists())
+
+    def test_admin_disabling_own_password_revokes_current_session(self):
+        response = self.client.post(
+            f"/admin/core/user/{self.admin.pk}/password/",
+            {"usable_password": "false", "unset-password": "1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.admin.refresh_from_db()
+        self.assertFalse(self.admin.has_usable_password())
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 401)
+
+    def test_one_time_code_admin_rejects_change_post(self):
+        record = PasswordReset.objects.get(user=self.owner)
+        record.mark_used()
+        response = self.client.post(
+            f"/admin/core/passwordreset/{record.pk}/change/",
+            {},
+        )
+        self.assertEqual(response.status_code, 403)
+        record.refresh_from_db()
+        self.assertTrue(record.used)
 
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL row locks")
@@ -121,7 +225,7 @@ class AdminConcurrencyTests(ApiTransactionCase):
 
         return patch.object(ModelAdmin, "get_object", get_then_mutate)
 
-    def test_admin_name_edit_does_not_restore_password_or_session_version(self):
+    def test_stale_admin_name_edit_does_not_restore_password_or_session_version(self):
         reset = PasswordReset(user=self.owner)
         reset.set_code("123456")
         reset.save()
@@ -131,14 +235,26 @@ class AdminConcurrencyTests(ApiTransactionCase):
                 self.owner.email, "123456", "ReplacementPass!7395"
             )
 
+        path = f"/admin/core/user/{self.owner.pk}/change/"
+        token = (
+            self.client.get(path).context["adminform"].form["security_state"].value()
+        )
         with self.mutate_after_initial_read(reset_password):
             response = self.client.post(
                 f"/admin/core/user/{self.owner.pk}/change/",
-                {"email": self.owner.email, "name": "Edited", "is_active": "on"},
+                {
+                    "email": self.owner.email,
+                    "name": "Edited",
+                    "is_active": "on",
+                    "security_state": token,
+                },
             )
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "security state changed", str(response.context["adminform"].form.errors)
+        )
         self.owner.refresh_from_db()
-        self.assertEqual(self.owner.name, "Edited")
+        self.assertEqual(self.owner.name, "Example Person")
         self.assertTrue(self.owner.check_password("ReplacementPass!7395"))
         self.assertEqual(self.owner.session_version, 1)
         self.assertEqual(self.owner_client.get("/api/users/me/").status_code, 401)

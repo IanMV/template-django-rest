@@ -29,6 +29,9 @@ class EmailIdentityTests(ApiCase):
                 "name": admin.name,
                 "password": admin.password,
                 "is_active": True,
+                "security_state": CustomUserChangeForm(instance=admin)[
+                    "security_state"
+                ].value(),
             },
             instance=admin,
         )

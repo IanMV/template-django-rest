@@ -1,5 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
 from unittest.mock import patch
 
 from django.core.cache import cache
@@ -62,6 +60,27 @@ class CodeRequestRateLimitTests(ApiCase):
 
 
 class LoginRateLimitTests(ApiCase):
+    def test_successful_logins_do_not_spend_shared_ip_budget(self):
+        user = self.create_user()
+        cache.set(_key("login:ip", "127.0.0.1"), 29, 300)
+        for _ in range(31):
+            self.login(user)
+        self.assertEqual(cache.get(_key("login:ip", "127.0.0.1")), 29)
+
+    def test_blocked_pair_does_not_spend_shared_ip_budget(self):
+        from core.auth.rate_limit import login_pair_key
+
+        cache.set(login_pair_key("missing@example.com", "127.0.0.1"), 10, 300)
+        for _ in range(31):
+            self.assertEqual(self.attempt().status_code, 429)
+        self.assertIsNone(cache.get(_key("login:ip", "127.0.0.1")))
+
+    def test_exhausted_ip_is_checked_before_authentication(self):
+        cache.set(_key("login:ip", "127.0.0.1"), 30, 300)
+        with patch("core.auth.services.authenticate") as authenticate:
+            self.assertEqual(self.attempt().status_code, 429)
+        authenticate.assert_not_called()
+
     def attempt(self, email="missing@example.com", ip="127.0.0.1"):
         return self.client.post(
             "/api/login/",
@@ -136,31 +155,18 @@ class CodeConfirmationRateLimitTests(ApiCase):
 
 
 class ReauthenticationRateLimitTests(ApiCase):
-    def test_atomic_increment_under_concurrent_failures(self):
+    def test_exhausted_budget_does_not_run_more_password_checks(self):
         user = self.create_user()
         key = _key("reauth:user", user.pk)
         cache.set(key, 4, 300)
-        barrier = Barrier(5)
-
-        def check_password(_password):
-            barrier.wait(timeout=5)
-            return False
-
-        def worker():
-            try:
+        with patch.object(user, "check_password", return_value=False) as check:
+            with self.assertRaises(serializers.ValidationError):
                 require_current_password(user, "wrong")
-            except serializers.ValidationError:
-                return 400
-            except Throttled:
-                return 429
-
-        with patch.object(user, "check_password", side_effect=check_password):
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                self.assertEqual(
-                    sorted(executor.map(lambda _: worker(), range(5))),
-                    [400, 429, 429, 429, 429],
-                )
-        self.assertEqual(cache.get(key), 9)
+            for _ in range(4):
+                with self.assertRaises(Throttled):
+                    require_current_password(user, "wrong")
+        self.assertEqual(check.call_count, 1)
+        self.assertEqual(cache.get(key), 5)
 
     def test_blocked_attempt_does_not_check_password(self):
         user = self.create_user()

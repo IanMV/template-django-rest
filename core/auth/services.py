@@ -3,7 +3,11 @@ from django.db import transaction
 from django.db.models import F
 from rest_framework.exceptions import AuthenticationFailed
 
-from core.auth.rate_limit import limit_login_attempts, reset_login_attempts
+from core.auth.rate_limit import (
+    limit_login_attempts,
+    record_login_failure,
+    reset_login_attempts,
+)
 from core.models import User
 
 
@@ -11,6 +15,7 @@ def require_unchanged_user(previous, current):
     if (
         current is None
         or not current.is_active
+        or not current.has_usable_password()
         or current.password != previous.password
         or current.email != previous.email
         or current.session_version != previous.session_version
@@ -31,6 +36,7 @@ class AuthService:
         limit_login_attempts(email, ip_address)
         user = authenticate(request=request, email=email, password=password)
         if user is None:
+            record_login_failure(ip_address)
             raise AuthenticationFailed()
 
         with transaction.atomic():
@@ -39,6 +45,8 @@ class AuthService:
             )
             require_unchanged_user(user, current)
             reset_login_attempts(email, ip_address)
+            if request.session.session_key:
+                request.session.flush()
             login(request, current, backend=user.backend)
             request.session.save()
 

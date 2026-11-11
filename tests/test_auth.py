@@ -61,3 +61,16 @@ class AuthenticationTests(ApiCase):
         self.login(self.create_user())
         self.assertNotEqual(self.client.session.session_key, old_key)
         self.assertFalse(Session.objects.filter(session_key=old_key).exists())
+
+    def test_relogin_same_account_rotates_and_flushes_previous_session_key(self):
+        user = self.create_user()
+        self.login(user)
+        old_key = self.client.cookies[settings.SESSION_COOKIE_NAME].value
+        replay = self.new_client()
+        replay.cookies[settings.SESSION_COOKIE_NAME] = old_key
+        self.login(user, ip="127.0.0.2")
+        new_key = self.client.cookies[settings.SESSION_COOKIE_NAME].value
+        self.assertNotEqual(new_key, old_key)
+        self.assertFalse(Session.objects.filter(session_key=old_key).exists())
+        self.assertEqual(replay.get("/api/users/me/").status_code, 401)
+        self.assertEqual(self.client.get("/api/users/me/").status_code, 200)

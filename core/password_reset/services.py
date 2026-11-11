@@ -1,14 +1,16 @@
 import logging
 import secrets
+from datetime import timedelta
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from core.auth.rate_limit import limit_code_requests
 from core.auth.services import SessionService
-from core.models import PasswordReset, User
+from core.models import EmailChange, PasswordReset, User
 from core.shared.email_token_sender import send_email_token
 from core.shared.response_messages import MSG_CODE_INVALID
 
@@ -28,7 +30,12 @@ class PasswordResetService:
                     .filter(email=email, is_active=True)
                     .first()
                 )
-                if user is None:
+                if user is None or not user.has_usable_password():
+                    return
+                if PasswordReset.objects.filter(
+                    user=user,
+                    created_at__gt=timezone.now() - timedelta(seconds=60),
+                ).exists():
                     return
                 raw_code = f"{secrets.randbelow(1000000):06d}"
                 PasswordReset.objects.filter(user=user).delete()
@@ -58,6 +65,8 @@ class PasswordResetService:
                 .filter(email=email, is_active=True)
                 .first()
             )
+            if user is not None and not user.has_usable_password():
+                user = None
             reset_code = (
                 PasswordReset.objects.select_for_update().filter(user=user).first()
             )
@@ -72,6 +81,7 @@ class PasswordResetService:
                 user.set_password(new_password)
                 user.save(update_fields=["password", "updated_at"])
                 reset_code.mark_used()
+                EmailChange.objects.filter(user=user).delete()
                 SessionService.revoke_all_sessions(user)
         if not valid:
             raise serializers.ValidationError({"code": MSG_CODE_INVALID})

@@ -41,12 +41,36 @@ class ProductionSettingsTests(SimpleTestCase):
         with self.assertRaisesMessage(ImproperlyConfigured, "not both"):
             with self.production_settings(EMAIL_USE_SSL="true", EMAIL_USE_TLS="true"):
                 pass
+        with self.assertRaisesMessage(ImproperlyConfigured, "not both"):
+            with self.production_settings(
+                EMAIL_USE_SSL=" true ", EMAIL_USE_TLS=" TRUE "
+            ):
+                pass
         with self.production_settings(
-            EMAIL_USE_SSL="true", EMAIL_USE_TLS="false", EMAIL_PORT="465"
+            EMAIL_USE_SSL=" true ", EMAIL_USE_TLS=" false ", EMAIL_PORT="465"
         ) as configured:
             with self.settings(MAILERS=configured.MAILERS):
                 self.assertTrue(mail.mailers["default"].use_ssl)
                 self.assertFalse(mail.mailers["default"].use_tls)
+
+    def test_boolean_settings_reject_invalid_values(self):
+        for key in ("EMAIL_USE_TLS", "EMAIL_USE_SSL", "TRUST_PROXY_HEADERS"):
+            for value in ("yes", "no", "1", "0", "", "   ", "invalid"):
+                with (
+                    self.subTest(key=key, value=value),
+                    self.assertRaisesMessage(ImproperlyConfigured, key),
+                ):
+                    with self.production_settings(**{key: value}):
+                        pass
+
+    def test_email_port_rejects_invalid_values(self):
+        for port in ("0", "-1", "65536", "abc", "", " "):
+            with (
+                self.subTest(port=port),
+                self.assertRaisesMessage(ImproperlyConfigured, "EMAIL_PORT"),
+            ):
+                with self.production_settings(EMAIL_PORT=port):
+                    pass
 
     def test_proxy_count_accepts_zero_and_positive(self):
         for count in ("0", "1", "3"):

@@ -2,13 +2,16 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 
+from core.shared.passwords import MAX_PASSWORD_LENGTH
+from core.shared.serializers import CanonicalEmailField
+
 
 class PasswordResetRequestSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=True)
+    email = CanonicalEmailField(required=True, max_length=254)
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    email = serializers.EmailField(required=True)
+    email = CanonicalEmailField(required=True, max_length=254)
     code = serializers.CharField(
         validators=[RegexValidator(r"\A[0-9]{6}\Z", message="Enter six digits.")],
         max_length=6,
@@ -17,6 +20,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         help_text="Six-digit code sent to the account email.",
     )
     new_password = serializers.CharField(
+        max_length=MAX_PASSWORD_LENGTH,
         trim_whitespace=False,
         validators=[RegexValidator(r"\S", message="This field may not be blank.")],
         write_only=True,

@@ -5,6 +5,28 @@ from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
 
+
+def _env_bool(name, default):
+    value = (os.getenv(name, default) or "").strip().lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ImproperlyConfigured(f"{name} must be 'true' or 'false'.")
+
+
+def _env_port(name, default="587"):
+    try:
+        port = int(os.getenv(name, default))
+        if not (1 <= port <= 65535):
+            raise ValueError
+    except ValueError:
+        raise ImproperlyConfigured(
+            f"{name} must be an integer between 1 and 65535."
+        ) from None
+    return port
+
+
 DEBUG = False
 SECRET_KEY = os.getenv("SECRET_KEY")
 if (
@@ -48,6 +70,12 @@ CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 database_url = os.getenv("DATABASE_URL", "")
 db_parts = urlsplit(database_url)
+try:
+    db_port = db_parts.port or 5432
+except ValueError:
+    raise ImproperlyConfigured(
+        "DATABASE_URL must identify a PostgreSQL host and database."
+    ) from None
 if (
     db_parts.scheme not in ("postgres", "postgresql")
     or not db_parts.hostname
@@ -63,7 +91,7 @@ DATABASES = {
         "USER": unquote(db_parts.username or ""),
         "PASSWORD": unquote(db_parts.password or ""),
         "HOST": db_parts.hostname,
-        "PORT": str(db_parts.port or 5432),
+        "PORT": str(db_port),
         "OPTIONS": {
             key: values[-1] for key, values in parse_qs(db_parts.query).items()
         },
@@ -85,7 +113,7 @@ except ValueError:
     raise ImproperlyConfigured("NUM_PROXIES must be a nonnegative integer.") from None
 SECURE_PROXY_SSL_HEADER = (
     ("HTTP_X_FORWARDED_PROTO", "https")
-    if os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
+    if _env_bool("TRUST_PROXY_HEADERS", "false")
     else None
 )
 SECURE_SSL_REDIRECT = True
@@ -95,12 +123,12 @@ MAILERS = {
     "default": {
         "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
         "OPTIONS": {
-            "host": os.getenv("EMAIL_HOST", ""),
-            "port": int(os.getenv("EMAIL_PORT", "587")),
+            "host": os.getenv("EMAIL_HOST", "").strip(),
+            "port": _env_port("EMAIL_PORT", "587"),
             "username": os.getenv("EMAIL_HOST_USER", ""),
             "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
-            "use_tls": os.getenv("EMAIL_USE_TLS", "true").lower() == "true",
-            "use_ssl": os.getenv("EMAIL_USE_SSL", "false").lower() == "true",
+            "use_tls": _env_bool("EMAIL_USE_TLS", "true"),
+            "use_ssl": _env_bool("EMAIL_USE_SSL", "false"),
             "timeout": 10,
         },
     },
@@ -112,6 +140,6 @@ if (
     and MAILERS["default"]["OPTIONS"]["use_ssl"]
 ):
     raise ImproperlyConfigured("Choose EMAIL_USE_TLS or EMAIL_USE_SSL, not both.")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
+DEFAULT_FROM_EMAIL = (os.getenv("DEFAULT_FROM_EMAIL") or "").strip()
 if not DEFAULT_FROM_EMAIL:
     raise ImproperlyConfigured("DEFAULT_FROM_EMAIL is required in production.")

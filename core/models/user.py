@@ -5,6 +5,7 @@ from django.contrib.auth.models import (
     BaseUserManager,
     PermissionsMixin,
 )
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.functions import Lower, Trim
 from django.utils.crypto import salted_hmac
@@ -16,10 +17,37 @@ class UserManager(BaseUserManager):
 
     @classmethod
     def normalize_email(cls, email):
-        return email.strip().lower() if email else ""
+        email = email.strip().lower() if email else ""
+        local, separator, domain = email.rpartition("@")
+        if separator:
+            try:
+                email = f"{local}@{domain.encode('idna').decode('ascii')}"
+            except UnicodeError:
+                raise ValidationError(
+                    _("Enter a valid email address."), code="invalid"
+                ) from None
+        if len(email) > 254:
+            raise ValidationError(
+                _("Ensure this value has at most 254 characters."), code="max_length"
+            )
+        return email
 
     def get_by_natural_key(self, username):
-        return self.get(email=self.normalize_email(username))
+        try:
+            email = self.normalize_email(username)
+        except ValidationError:
+            raise self.model.DoesNotExist from None
+        return self.get(email=email)
+
+    def release_provisional_email(self, email):
+        # The caller must keep this lock until the replacement is saved.
+        occupant = self.select_for_update(no_key=True).filter(email=email).first()
+        if occupant is None:
+            return True
+        if not occupant.is_provisional_registration:
+            return False
+        occupant.delete()
+        return True
 
     def _create_user(self, email, password, **extra_fields):
         if not email:
@@ -105,6 +133,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = _("user")
         verbose_name_plural = _("users")
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at", "-id"], name="core_user_created_id_idx")
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(email=Lower(Trim("email"))),
@@ -127,7 +158,25 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.name.strip()
 
     def get_short_name(self) -> str:
-        return self.name.split()[0] if self.name else self.email
+        parts = self.name.split()
+        return parts[0] if parts else self.email
+
+    @property
+    def is_provisional_registration(self):
+        return (
+            not self.is_active
+            and self.password == ""
+            and not self.is_staff
+            and not self.is_superuser
+            and not self.name
+            and self.last_login is None
+            and self.session_version == 0
+            and not self.groups.exists()
+            and not self.user_permissions.exists()
+            and not self.logentry_set.exists()
+            and not hasattr(self, "passwordreset")
+            and not hasattr(self, "emailchange")
+        )
 
     def deactivate(self):
         self.is_active = False

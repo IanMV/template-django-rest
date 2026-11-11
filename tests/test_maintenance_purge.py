@@ -25,8 +25,17 @@ class MaintenanceTests(ApiCase):
     def test_cleanup_preserves_accounts_and_live_registrations(self):
         missing = self.abandoned()
         expired = self.abandoned("expired@example.com")
+        exhausted = self.abandoned("exhausted@example.com")
         EmailVerification.objects.create(
             user=expired, code="hash", expires_at=timezone.now()
+        )
+        EmailVerification.objects.create(
+            user=exhausted,
+            code="hash",
+            used=True,
+            used_at=timezone.now(),
+            attempts=5,
+            expires_at=timezone.now(),
         )
         preserved = [
             self.abandoned("disabled@example.com", password="!"),
@@ -38,7 +47,9 @@ class MaintenanceTests(ApiCase):
         ]
         EmailVerification.objects.create(user=preserved[3], code="hash")
         self.cleanup()
-        self.assertFalse(User.objects.filter(pk__in=[missing.pk, expired.pk]).exists())
+        self.assertFalse(
+            User.objects.filter(pk__in=[missing.pk, expired.pk, exhausted.pk]).exists()
+        )
         self.assertEqual(
             User.objects.filter(pk__in=[user.pk for user in preserved]).count(),
             len(preserved),

@@ -234,6 +234,45 @@ class PasswordResetTests(ApiCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME]["max-age"], 0)
 
+    def test_unusable_password_returns_uniform_response_and_rejects_prior_code(self):
+        user = self.create_user()
+        code = self.request_code(user.email)
+        mail.outbox.clear()
+        cache.clear()
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+
+        unusable_response = self.post_with_commit(
+            self.base_url + "request/",
+            {"email": user.email},
+            REMOTE_ADDR="127.0.0.1",
+        )
+        missing_response = self.post_with_commit(
+            self.base_url + "request/",
+            {"email": "missing@example.com"},
+            REMOTE_ADDR="127.0.0.2",
+        )
+        self.assertEqual(
+            (unusable_response.status_code, unusable_response.data),
+            (missing_response.status_code, missing_response.data),
+        )
+        self.assertEqual(unusable_response.status_code, 200)
+        self.assertFalse(mail.outbox)
+
+        confirm = self.client.post(
+            self.base_url + "confirm/",
+            {
+                "email": user.email,
+                "code": code,
+                "new_password": "ReplacementPass!7395",
+            },
+            format="json",
+        )
+        self.assertEqual(confirm.status_code, 400)
+        self.assertIn("code", confirm.data)
+        user.refresh_from_db()
+        self.assertFalse(user.has_usable_password())
+
 
 class PasswordResetAttemptPersistenceTests(ApiTransactionCase):
     def test_failed_confirmation_persists_attempt_after_400(self):

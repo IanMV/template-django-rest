@@ -30,7 +30,11 @@ class EmailChangeRequestView(APIView):
     @extend_schema(
         tags=["email-change"],
         summary="Request an email change code",
-        description="Step 1 of 2. Requires the current password. Sends a code to the new address.",
+        description=(
+            "Step 1 of 2. Requires the current password. Returns the same response "
+            "for occupied addresses and delivery failures. A code is sent only "
+            "when the address is eligible; delivery errors are logged."
+        ),
         request=EmailChangeRequestSerializer,
         responses={
             200: RequestSentSerializer,

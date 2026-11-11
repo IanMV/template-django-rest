@@ -111,10 +111,18 @@ class UserTests(ApiCase):
         self.assertEqual(len(response.data["results"]), 100)
 
     def test_deactivate_revokes_all_sessions_and_clears_cookies(self):
+        from core.models import EmailChange, EmailVerification, PasswordReset
+
         user = self.create_user()
         self.login(user)
         other = self.new_client()
         self.login(user, client=other, ip="127.0.0.2")
+        for model in (PasswordReset, EmailChange, EmailVerification):
+            record = model(user=user)
+            if model is EmailChange:
+                record.new_email = "pending@example.com"
+            record.set_code("123456")
+            record.save()
         response = self.client.post(
             "/api/me/deactivate/", {"password": self.password}, format="json"
         )
@@ -124,6 +132,8 @@ class UserTests(ApiCase):
         self.assertEqual(user.session_version, 1)
         self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME]["max-age"], 0)
         self.assertEqual(other.get("/api/users/me/").status_code, 401)
+        for model in (PasswordReset, EmailChange, EmailVerification):
+            self.assertFalse(model.objects.filter(user=user).exists())
 
     def test_create_superuser_requires_password(self):
         with self.assertRaisesMessage(ValueError, "Superuser must have a password."):

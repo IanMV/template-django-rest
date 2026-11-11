@@ -83,7 +83,7 @@ class StaleUserTests(ApiCase):
                         with self.assertRaises(AuthenticationFailed):
                             if action == "request":
                                 EmailChangeService.request_change(
-                                    user, f"new-{state}@example.com", self.password
+                                    user, user.email, self.password
                                 )
                             elif action == "confirm":
                                 EmailChangeService.confirm_change(

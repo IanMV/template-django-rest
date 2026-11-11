@@ -16,7 +16,8 @@ class Command(BaseCommand):
         now = timezone.now()
         abandoned = User.objects.filter(
             Q(emailverification__isnull=True)
-            | Q(emailverification__used=False, emailverification__expires_at__lte=now),
+            | Q(emailverification__expires_at__lte=now)
+            | Q(emailverification__used=True),
             is_active=False,
             password="",
             is_staff=False,
@@ -38,9 +39,7 @@ class Command(BaseCommand):
             expired = model.objects.filter(expires_at__lte=now)
             if model is EmailVerification:
                 # Keep abandoned-registration markers until the user is eligible for cleanup.
-                expired = expired.exclude(
-                    user__is_active=False, user__password="", used=False
-                )
+                expired = expired.exclude(user__is_active=False, user__password="")
             while ids := list(
                 expired.order_by("pk").values_list("pk", flat=True)[:500]
             ):
