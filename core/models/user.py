@@ -1,5 +1,7 @@
 import uuid
 
+from asgiref.sync import sync_to_async
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -150,6 +152,29 @@ class User(AbstractBaseUser, PermissionsMixin):
     def save(self, *args, **kwargs):
         self.email = UserManager.normalize_email(self.email)
         return super().save(*args, **kwargs)
+
+    def check_password(self, raw_password):
+        encoded = self.password
+        upgraded = True
+
+        def setter(raw_password):
+            nonlocal upgraded
+            password = make_password(raw_password)
+            # A hash upgrade must never overwrite a concurrent password change.
+            upgraded = bool(
+                type(self)
+                .objects.using(self._state.db)
+                .filter(pk=self.pk, password=encoded)
+                .update(password=password)
+            )
+            if upgraded:
+                self.password = password
+                self._password = None
+
+        return check_password(raw_password, encoded, setter) and upgraded
+
+    async def acheck_password(self, raw_password):
+        return await sync_to_async(self.check_password)(raw_password)
 
     def __str__(self) -> str:
         return f"{self.name} <{self.email}>" if self.name else self.email

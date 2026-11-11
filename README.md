@@ -321,6 +321,7 @@ Antes de atender contas reais, valide os fluxos da SPA nos domínios/navegadores
 - **Cache local:** os contadores são por processo, perdem-se em reinícios e podem ser expulsos por memória. Mais workers ampliam a margem efetiva. Não é limitação global ou estrita. As cinco tentativas do OTP permanecem no banco. Proteja o admin separadamente: esses limitadores são da API.
 - **Réplicas:** sessões no PostgreSQL dispensam afinidade no balanceador, mas não tornam os limitadores distribuídos. Meça consultas, latência e carga antes de dimensionar.
 - **Revogação:** recuperação de senha, confirmação de outro e-mail e desativação invalidam os acessos na próxima autenticação; não desfazem operações já autorizadas e em andamento. Mutações sensíveis bloqueiam e conferem novamente o usuário. SQLite não reproduz os bloqueios do PostgreSQL.
+- **Atualização de hash:** a atualização automática só grava se a senha armazenada ainda for a verificada. Se houver conflito com uma troca de senha ou outra atualização, a autenticação é rejeitada sem sobrescrever a credencial atual; pode ser necessário repetir o login.
 - **Logs e cache HTTP:** registre apenas evento/resultado, nunca corpos de requisições, senhas, OTPs, cookies ou identificadores de sessão. Não faça cache de `/api/` nem de `/admin/` no proxy/CDN. Não há tabela ou API de auditoria.
 
 ## 8. Atualizar uma instalação antiga
@@ -343,6 +344,7 @@ Este é o resumo técnico da mesma trilha, não uma especificação paralela nem
 - **Autenticação:** `core/auth/authenticate.py` deriva de `SessionAuthentication` e exige CSRF também em mutações públicas. Sem JWT.
 - **Expiração:** `core/auth/signals.py`, sinal `user_logged_in`, fixa login + 24 horas em API e admin; não há renovação por atividade.
 - **Hash da sessão:** `User._get_session_auth_hash` inclui senha, e-mail, estado ativo e `session_version`.
+- **Atualização de hash:** `User.check_password` faz escrita condicional ao hash original; conflitos falham sem alterar a senha atual. `acheck_password` reutiliza o mesmo caminho.
 - **Revogação geral interna:** `SessionService.revoke_all_sessions` incrementa a versão atomicamente, sem varrer sessões; registros antigos permanecem até a limpeza.
 - **Admin:** alterações de e-mail/estado via `UserAdmin` incrementam a versão e invalidam códigos pendentes. POSTs de alteração releem o usuário sob bloqueio; formulário traz snapshot assinado do estado de segurança e rejeita submissão defasada. Histórico fora de transação não adquire bloqueio de escrita.
 - **Concorrência:** `require_unchanged_user` revalida estado sob bloqueio; `select_for_update` exige PostgreSQL para reproduzir a proteção real.
