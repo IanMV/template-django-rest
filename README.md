@@ -184,6 +184,8 @@ Para cada POST abaixo, use o mesmo padrão do login: `credentials: "include"`, J
 
 **Desativação:** exige sessão e senha atual, desativa a conta e invalida todos os acessos. Não equivale à exclusão física dos dados. O cadastro público não reativa contas desativadas que já tenham senha ou privilégios administrativos.
 
+**Tamanho de senha:** API e formulários de login, criação e troca de senha do Admin aceitam até 4.096 caracteres, sem truncagem e preservando espaços. Entradas maiores são rejeitadas antes da autenticação e da validação de complexidade. Quem já utilizava senha acima desse teto precisa redefini-la pela recuperação; o hash armazenado não permite identificar previamente essas contas.
+
 Os códigos de uso único (OTP) têm **seis dígitos ASCII**, expiram em **15 minutos** e são inutilizados depois de **cinco erros**. Envie `code` como string para preservar zeros à esquerda. O banco guarda apenas seu hash. Nova emissão substitui a anterior; confirmação bem-sucedida consome o código. Não existe etapa `verify/` separada.
 
 ### Diagnosticar uma resposta inesperada
@@ -276,7 +278,7 @@ Esse comando cria e remove um banco de teste; nunca o aponte para produção. O 
 
 **Estado da validação:** suíte SQLite aprovada localmente, lock consistente, lint/formatação aprovados, nenhuma migração ausente e schema validado sem avisos. O mantenedor confirmou a aprovação da CI, incluindo a suíte PostgreSQL e os três testes de concorrência. Navegador real, SMTP real, contêineres e restauração de backups ainda exigem validação funcional própria; a aprovação dos testes automatizados não comprova esses cenários.
 
-**Correção posterior no admin:** a invalidação de códigos na troca de e-mail e a leitura sob bloqueio nas alterações administrativas receberam testes de regressão em `test_admin_security.py`. Nesta alteração foram autorizadas somente verificações estáticas; esses testes e a suíte atualizada ainda precisam ser executados. A aprovação anterior da CI não valida estas novas correções.
+**Correções posteriores à auditoria:** regressões adicionais ficam em `test_audit_regressions.py` e `test_audit_concurrency.py`. A suíte SQLite, lint, schema e consistência das migrações foram verificados nesta revisão. PostgreSQL local indisponível impediu a execução dos novos testes de bloqueio real; isolamento SMTP e configurações de contêineres ainda precisam de validação funcional.
 
 ## 6. Publicar com segurança
 
@@ -304,6 +306,8 @@ Produção usa `__Host-sessionid` e `__Host-csrftoken`: HttpOnly, Secure, `SameS
 
 **VPS com Compose:** a stack incluída é para host único e contém PostgreSQL, release, aplicação e Nginx. Injete também `POSTGRES_PASSWORD`, `APP_DB_PASSWORD` e uma `DATABASE_URL` coerente com o usuário da aplicação (`template_auth` por padrão). Inclua `localhost` em `ALLOWED_HOSTS` para a verificação interna. Prepare certificados válidos e renovação externamente; `TLS_DIR` aponta ao diretório com `fullchain.pem` e `privkey.pem`. Somente o Nginx publica portas. Use `pdm run prod:up` e `pdm run prod:logs` após preparar a configuração. Não inicie essa stack inteira para consumir banco gerenciado sem adaptar a orquestração.
 
+As três rotas `/api/{registration,password-reset,email-change}/request/` usam o serviço Gunicorn `issuance`, separado de `app`. `WEB_CONCURRENCY` dimensiona o pool principal; `MAIL_WEB_CONCURRENCY` dimensiona a emissão (padrão: dois workers em cada pool). Reserve memória e conexões PostgreSQL para ambos. Sob SMTP lento, a emissão pode ficar indisponível sem ocupar os workers principais; isso não garante entrega. Em PaaS, reproduza esse roteamento e isolamento: um único pool Gunicorn não oferece essa proteção.
+
 Antes de atender contas reais, valide os fluxos da SPA nos domínios/navegadores escolhidos, SMTP, concorrência PostgreSQL e backup com restauração. A verificação HTTP dos contêineres não comprova banco disponível ou entrega de e-mail. Volumes não substituem backups; nunca use `down -v` com dados que precise preservar.
 
 ## 7. Operar e conhecer os limites
@@ -311,6 +315,8 @@ Antes de atender contas reais, valide os fluxos da SPA nos domínios/navegadores
 - **Limpeza:** agende `python manage.py cleanup_auth --settings=app.settings.prod` na hospedagem, por exemplo diariamente. Remove cadastros incompletos elegíveis após 48 horas, códigos vencidos e sessões expiradas. Preserva contas com senha definida ou privilégios administrativos e reavalia candidatos sob bloqueio antes de excluir.
 - **E-mail:** SMTP é síncrono, depois do bloco de transação do banco. Cada espera de rede tem timeout de dez segundos; não é um prazo total garantido. Não há fila nem retentativa durável. Falha de envio invalida o código emitido quando a limpeza no banco consegue executar. Pode ser necessário pedir outro código.
 - **Enumeração:** a recuperação retorna resposta uniforme, mas SMTP síncrono pode revelar diferenças de latência. Não há promessa de tempo constante.
+- **Troca de e-mail:** a solicitação também retorna resposta uniforme para endereço ocupado e falha de emissão, com erros registrados sem segredos. Conta provisória vazia não reserva o endereço contra troca confirmada por OTP ou criação administrativa válida; contas estabelecidas e registros com dados/permissões são preservados. Formulários administrativos com estado de segurança defasado são rejeitados e exigem recarga.
+- **Reenvio:** além dos limites locais, a emissão confere no banco o intervalo de 60 segundos sob bloqueio do usuário. Duplicata entre workers mantém o código e sua validade, sem novo envio; na recuperação isso não altera a resposta genérica.
 - **Limites:** login por IP e IP/e-mail, emissão por IP/e-mail, confirmação por IP e senha atual por usuário. Valores e janelas ficam em `core/auth/rate_limit.py`; falhas de acesso ao cache retornam indisponibilidade, não liberação irrestrita.
 - **Cache local:** os contadores são por processo, perdem-se em reinícios e podem ser expulsos por memória. Mais workers ampliam a margem efetiva. Não é limitação global ou estrita. As cinco tentativas do OTP permanecem no banco. Proteja o admin separadamente: esses limitadores são da API.
 - **Réplicas:** sessões no PostgreSQL dispensam afinidade no balanceador, mas não tornam os limitadores distribuídos. Meça consultas, latência e carga antes de dimensionar.
@@ -325,6 +331,8 @@ Não execute simplesmente `migrate` sobre um banco que tenha aplicado a antiga `
 
 Para preservar dados, faça backup e planeje uma migração específica, em uma cópia isolada, a partir da versão realmente instalada. Identifique diferenças de schema, normalização/colisões de e-mail e dados que precisam ser preservados, e valide restauração antes da troca. Um ambiente novo deve começar com banco novo; não apague o banco antigo para viabilizar o onboarding.
 
+Para bancos que já usam a `0001_initial.py` atual, a migração `0002` converte domínios IDN para Punycode em usuários e destinos de troca. Execute com escritas suspensas e backup verificado: a checagem prévia interrompe a migração diante de colisões, domínios inválidos ou expansão acima de 254 caracteres, sem mesclar contas. Resolva esses casos manualmente em ambiente autorizado antes de tentar novamente. A conversão invalida sessões cujo e-mail armazenado mudou e não é desfeita pela migração reversa. A `0003` cria o índice composto de paginação; planeje a janela de criação conforme o volume da tabela.
+
 JWTs anteriores não autenticam. Foram removidos refresh, opção `remember_me`, dispositivos/sessões consultáveis pela API, revogação geral pela API, endpoints `verify/`, auditoria consultável e `/manual/`. A suíte atual cobre o contrato de sessão; não há necessidade de reinstalar JWT, Celery ou Redis para executar os testes.
 
 ## 9. Consulta rápida para manutenção e IA
@@ -336,14 +344,14 @@ Este é o resumo técnico da mesma trilha, não uma especificação paralela nem
 - **Expiração:** `core/auth/signals.py`, sinal `user_logged_in`, fixa login + 24 horas em API e admin; não há renovação por atividade.
 - **Hash da sessão:** `User._get_session_auth_hash` inclui senha, e-mail, estado ativo e `session_version`.
 - **Revogação geral interna:** `SessionService.revoke_all_sessions` incrementa a versão atomicamente, sem varrer sessões; registros antigos permanecem até a limpeza.
-- **Admin:** alterações de e-mail/estado via `UserAdmin` incrementam a versão; trocar e-mail exclui os códigos pendentes. POSTs de alteração releem o usuário sob bloqueio, incluindo a troca de senha em transação. Regressões em `test_admin_security.py` aguardam execução.
+- **Admin:** alterações de e-mail/estado via `UserAdmin` incrementam a versão e invalidam códigos pendentes. POSTs de alteração releem o usuário sob bloqueio; formulário traz snapshot assinado do estado de segurança e rejeita submissão defasada. Histórico fora de transação não adquire bloqueio de escrita.
 - **Concorrência:** `require_unchanged_user` revalida estado sob bloqueio; `select_for_update` exige PostgreSQL para reproduzir a proteção real.
 - **CSRF:** GET `/api/login/` retorna `{csrfToken}` sem cache; POST retorna `{detail, csrfToken}` rotacionado; SPA usa `credentials: include` e `X-CSRFTOKEN`.
-- **Identidade:** e-mails normalizados integralmente para minúsculas; constraint protege escritas diretas. Senhas preservam espaços; vazias/só espaços são rejeitadas.
+- **Identidade:** e-mails em minúsculas, domínio IDNA/Punycode e até 254 caracteres canônicos. A constraint de minúsculas/espaços não impõe IDNA em SQL/bulk arbitrário; use os fluxos validados. Senhas preservam espaços; vazias/só espaços são rejeitadas. API e Admin limitam senhas a 4.096 caracteres (`core/shared/passwords.py`); credenciais antigas maiores exigem recuperação.
 - **OTP:** seis dígitos ASCII, hash, 15 minutos, cinco erros, consumo transacional. Erro de código inválido é levantado após o bloco atômico para persistir tentativas.
-- **SMTP:** `core/shared/email_token_sender.py`, síncrono após bloco transacional, com prazo de expiração conferido antes de enviar; sem fila/retry durável.
+- **SMTP:** `core/shared/email_token_sender.py`, síncrono após bloco transacional; Compose isola solicitações no pool `issuance`. Confere expiração antes de enviar; sem fila/retry durável.
 - **Logs:** `core/shared/security.py` aceita apenas eventos/resultados fixos; falhas de emissão/limpeza registram classe da exceção, não a mensagem original.
-- **Limites:** `core/auth/rate_limit.py`, cache local por processo; sem garantia global. Falhas do cache retornam `503`.
+- **Limites:** `core/auth/rate_limit.py`, cache local por processo; sem garantia global. IP de login contabiliza falhas, não acertos; par bloqueado não consome seu orçamento. Reautenticação serializa guarda/hash/contador com bloqueio de usuário. Falhas do cache retornam `503`.
 - **Operação:** scheduler externo chama `cleanup_auth`; sem Redis/Celery/Beat. Django direto não carrega `.env`; scripts locais de desenvolvimento e `deploy-check` carregam pelo PDM, e Compose usa `--env-file .env`.
 - **Implantação:** `app.settings.prod`, PostgreSQL, HTTPS; release único para migrações/static; web não root. Compose é VPS de host único, não provisionamento de PaaS.
 - **Verificação:** `pdm run test`, `lint`, `format --check`, `migrations-check`, `schema-check`; não carregam `.env` e as verificações Django selecionam `tests.settings`.
