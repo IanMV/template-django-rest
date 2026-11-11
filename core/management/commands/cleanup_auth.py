@@ -22,15 +22,22 @@ class Command(BaseCommand):
             password="",
             is_staff=False,
             is_superuser=False,
+            name="",
+            last_login__isnull=True,
+            session_version=0,
+            groups__isnull=True,
+            user_permissions__isnull=True,
+            logentry__isnull=True,
+            passwordreset__isnull=True,
+            emailchange__isnull=True,
             created_at__lt=now - timedelta(hours=48),
         )
         total = 0
         while ids := list(abandoned.order_by("pk").values_list("pk", flat=True)[:500]):
             with transaction.atomic():
                 list(
-                    User.objects.select_for_update(no_key=True)
-                    .filter(pk__in=ids)
-                    .order_by("pk")
+                    # Also serialize foreign-key additions with account deletion.
+                    User.objects.select_for_update().filter(pk__in=ids).order_by("pk")
                 )
                 _, counts = abandoned.filter(pk__in=ids).delete()
                 total += counts.get(User._meta.label, 0)

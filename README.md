@@ -280,6 +280,8 @@ Esse comando cria e remove um banco de teste; nunca o aponte para produção. O 
 
 **Correções posteriores à auditoria:** regressões adicionais ficam em `test_audit_regressions.py` e `test_audit_concurrency.py`. A suíte SQLite, lint, schema e consistência das migrações foram verificados nesta revisão. PostgreSQL local indisponível impediu a execução dos novos testes de bloqueio real; isolamento SMTP e configurações de contêineres ainda precisam de validação funcional.
 
+**Validação destas correções de segurança e limpeza:** 215 testes descobertos, com 203 executados e 12 ignorados por exigirem PostgreSQL. A corrida de atualização de hash foi testada também com duas conexões SQLite; isso não substitui os testes de bloqueio PostgreSQL. Lint, formatação, schema e verificação de migrações passaram. A execução usou configuração sintética, banco em memória e e-mail em memória, sem carregar arquivos de ambiente.
+
 ## 6. Publicar com segurança
 
 Use `app.settings.prod`, PostgreSQL privado e HTTPS. Injete a configuração pelo painel de segredos/variáveis da hospedagem; não grave credenciais no repositório nem na imagem. O perfil valida configurações obrigatórias ao carregar.
@@ -312,7 +314,7 @@ Antes de atender contas reais, valide os fluxos da SPA nos domínios/navegadores
 
 ## 7. Operar e conhecer os limites
 
-- **Limpeza:** agende `python manage.py cleanup_auth --settings=app.settings.prod` na hospedagem, por exemplo diariamente. Remove cadastros incompletos elegíveis após 48 horas, códigos vencidos e sessões expiradas. Preserva contas com senha definida ou privilégios administrativos e reavalia candidatos sob bloqueio antes de excluir.
+- **Limpeza:** agende `python manage.py cleanup_auth --settings=app.settings.prod` na hospedagem, por exemplo diariamente. Remove apenas cadastros provisórios vazios elegíveis após 48 horas, além de códigos vencidos e sessões expiradas. Preserva contas com senha definida ou inutilizada, privilégios, nome, grupos, permissões, histórico de uso ou relações protegidas pelo modelo. Cadastros enriquecidos com nome, grupos ou permissões não são excluídos por idade: exigem revisão explícita. Reavalia os candidatos sob bloqueio antes de excluir e coordena a exclusão com a inclusão de relações.
 - **E-mail:** SMTP é síncrono, depois do bloco de transação do banco. Cada espera de rede tem timeout de dez segundos; não é um prazo total garantido. Não há fila nem retentativa durável. Falha de envio invalida o código emitido quando a limpeza no banco consegue executar. Pode ser necessário pedir outro código.
 - **Enumeração:** a recuperação retorna resposta uniforme, mas SMTP síncrono pode revelar diferenças de latência. Não há promessa de tempo constante.
 - **Troca de e-mail:** a solicitação também retorna resposta uniforme para endereço ocupado e falha de emissão, com erros registrados sem segredos. Conta provisória vazia não reserva o endereço contra troca confirmada por OTP ou criação administrativa válida; contas estabelecidas e registros com dados/permissões são preservados. Formulários administrativos com estado de segurança defasado são rejeitados e exigem recarga, inclusive quando flags administrativas, grupos ou permissões diretas mudaram desde a abertura.
@@ -354,7 +356,7 @@ Este é o resumo técnico da mesma trilha, não uma especificação paralela nem
 - **SMTP:** `core/shared/email_token_sender.py`, síncrono após bloco transacional; Compose isola solicitações no pool `issuance`. Confere expiração antes de enviar; sem fila/retry durável.
 - **Logs:** `core/shared/security.py` aceita apenas eventos/resultados fixos; falhas de emissão/limpeza registram classe da exceção, não a mensagem original.
 - **Limites:** `core/auth/rate_limit.py`, cache local por processo; sem garantia global. IP de login contabiliza falhas, não acertos; par bloqueado não consome seu orçamento. Reautenticação serializa guarda/hash/contador com bloqueio de usuário. Falhas do cache retornam `503`.
-- **Operação:** scheduler externo chama `cleanup_auth`; sem Redis/Celery/Beat. Django direto não carrega `.env`; scripts locais de desenvolvimento e `deploy-check` carregam pelo PDM, e Compose usa `--env-file .env`.
+- **Operação:** scheduler externo chama `cleanup_auth`; apenas cadastros provisórios vazios são elegíveis à exclusão, com rechecagem sob bloqueio que também coordena inclusões de relações. Sem Redis/Celery/Beat. Django direto não carrega `.env`; scripts locais de desenvolvimento e `deploy-check` carregam pelo PDM, e Compose usa `--env-file .env`.
 - **Implantação:** `app.settings.prod`, PostgreSQL, HTTPS; release único para migrações/static; web não root. Compose é VPS de host único, não provisionamento de PaaS.
 - **Verificação:** `pdm run test`, `lint`, `format --check`, `migrations-check`, `schema-check`; não carregam `.env` e as verificações Django selecionam `tests.settings`.
 - **PostgreSQL:** `pdm run test:postgres`, somente com serviço descartável dedicado; usa `tests.settings_integration`, sem carregar `.env`.

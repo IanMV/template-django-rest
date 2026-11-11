@@ -1,11 +1,22 @@
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from datetime import timedelta
+from io import StringIO
 from threading import Barrier, Event
 from unittest import skipUnless
 from unittest.mock import patch
 
+from django.contrib.auth.models import Group
 from django.core.cache import cache
-from django.db import OperationalError, connection, connections, transaction
+from django.core.management import call_command
+from django.db import (
+    IntegrityError,
+    OperationalError,
+    connection,
+    connections,
+    transaction,
+)
 from django.db.models.query import QuerySet
+from django.utils import timezone
 from rest_framework.exceptions import Throttled, ValidationError
 
 from core.auth.rate_limit import _key, require_current_password
@@ -148,6 +159,64 @@ class AuditConcurrencyTests(ApiTransactionCase):
         self.assertFalse(connection.in_atomic_block)
         response = self.client.post(f"/admin/core/user/{owner.pk}/history/")
         self.assertEqual(response.status_code, 200)
+
+    def test_cleanup_preserves_enrichment_committed_before_lock(self):
+        user = User.objects.create(email="pending@example.com", is_active=False)
+        User.objects.filter(pk=user.pk).update(
+            created_at=timezone.now() - timedelta(hours=49)
+        )
+        group = Group.objects.create(name="Committed enrichment")
+        lock = User.objects.select_for_update
+
+        def enrich_before_lock(*args, **kwargs):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(self.worker, lambda: user.groups.add(group)).result(
+                    timeout=10
+                )
+            return lock(*args, **kwargs)
+
+        with patch.object(
+            User.objects, "select_for_update", side_effect=enrich_before_lock
+        ):
+            call_command("cleanup_auth", stdout=StringIO())
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())
+        self.assertTrue(user.groups.filter(pk=group.pk).exists())
+
+    def test_cleanup_blocks_foreign_key_addition_until_deletion_commits(self):
+        user = User.objects.create(email="pending@example.com", is_active=False)
+        User.objects.filter(pk=user.pk).update(
+            created_at=timezone.now() - timedelta(hours=49)
+        )
+        group = Group.objects.create(name="Concurrent enrichment")
+        attempting = Event()
+        delete = QuerySet.delete
+        additions = []
+
+        def add_group():
+            try:
+                with transaction.atomic():
+                    attempting.set()
+                    user.groups.add(group)
+                return True
+            except IntegrityError:
+                return False
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+
+            def inspect_delete(queryset):
+                if queryset.model is User:
+                    addition = executor.submit(self.worker, add_group)
+                    additions.append(addition)
+                    self.assertTrue(attempting.wait(timeout=10))
+                    with self.assertRaises(TimeoutError):
+                        addition.result(timeout=0.2)
+                return delete(queryset)
+
+            with patch.object(QuerySet, "delete", inspect_delete):
+                call_command("cleanup_auth", stdout=StringIO())
+            self.assertEqual(len(additions), 1)
+            self.assertFalse(additions[0].result(timeout=10))
+        self.assertFalse(User.objects.filter(pk=user.pk).exists())
 
 
 class AdminAutocommitTests(ApiTransactionCase):

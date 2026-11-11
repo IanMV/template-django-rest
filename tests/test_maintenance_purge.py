@@ -2,6 +2,9 @@ from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
 
+from django.contrib.admin.models import ADDITION, LogEntry
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.sessions.models import Session
 from django.core.management import call_command
 from django.db.models.query import QuerySet
@@ -87,6 +90,102 @@ class MaintenanceTests(ApiCase):
         ):
             self.cleanup()
         self.assertTrue(User.objects.filter(pk=user.pk, is_active=True).exists())
+
+    def test_cleanup_preserves_every_nonprovisional_state(self):
+        preserved = [
+            self.abandoned("named@example.com", name="Managed registration"),
+            self.abandoned("login@example.com", last_login=timezone.now()),
+            self.abandoned("version@example.com", session_version=1),
+            self.abandoned("group@example.com"),
+            self.abandoned("permission@example.com"),
+            self.abandoned("history@example.com"),
+            self.abandoned("reset@example.com"),
+            self.abandoned("change@example.com"),
+        ]
+        preserved[3].groups.add(Group.objects.create(name="Preserved"))
+        preserved[4].user_permissions.add(
+            Permission.objects.get(content_type__app_label="core", codename="view_user")
+        )
+        LogEntry.objects.create(
+            user=preserved[5],
+            content_type=ContentType.objects.get_for_model(User),
+            object_id=str(preserved[5].pk),
+            object_repr="Managed registration",
+            action_flag=ADDITION,
+        )
+        PasswordReset.objects.create(user=preserved[6], code="hash")
+        EmailChange.objects.create(
+            user=preserved[7], code="hash", new_email="destination@example.com"
+        )
+        removable = self.abandoned("empty@example.com")
+        for user in preserved:
+            self.assertFalse(user.is_provisional_registration)
+        self.assertTrue(removable.is_provisional_registration)
+        self.cleanup()
+        self.assertEqual(
+            User.objects.filter(pk__in=[user.pk for user in preserved]).count(),
+            len(preserved),
+        )
+        self.assertFalse(User.objects.filter(pk=removable.pk).exists())
+
+    def test_admin_enrichment_of_public_registration_prevents_cleanup(self):
+        self.assertEqual(
+            self.client.post(
+                "/api/registration/request/", {"email": "pending@example.com"}
+            ).status_code,
+            201,
+        )
+        pending = User.objects.get(email="pending@example.com")
+        self.login(
+            self.create_user(
+                email="admin@example.com", is_staff=True, is_superuser=True
+            )
+        )
+        path = f"/admin/core/user/{pending.pk}/change/"
+        token = (
+            self.client.get(path).context["adminform"].form["security_state"].value()
+        )
+        group = Group.objects.create(name="Managed")
+        response = self.client.post(
+            path,
+            {
+                "email": pending.email,
+                "name": "Enriched registration",
+                "groups": [str(group.pk)],
+                "security_state": token,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        pending.refresh_from_db()
+        self.assertFalse(pending.is_active)
+        self.assertEqual(pending.password, "")
+        with patch(
+            "django.utils.timezone.now",
+            return_value=timezone.now() + timedelta(hours=49),
+        ):
+            self.cleanup()
+        pending.refresh_from_db()
+        self.assertEqual(pending.name, "Enriched registration")
+        self.assertTrue(pending.groups.filter(pk=group.pk).exists())
+
+    def test_cleanup_rechecks_enrichment_after_selecting_candidates(self):
+        for relation in (False, True):
+            with self.subTest(relation=relation):
+                user = self.abandoned(f"candidate-{relation}@example.com")
+                lock = User.objects.select_for_update
+
+                def enrich_before_lock(*args, **kwargs):
+                    if relation:
+                        user.groups.add(Group.objects.create(name="Added before lock"))
+                    else:
+                        User.objects.filter(pk=user.pk).update(name="Added before lock")
+                    return lock(*args, **kwargs)
+
+                with patch.object(
+                    User.objects, "select_for_update", side_effect=enrich_before_lock
+                ):
+                    self.cleanup()
+                self.assertTrue(User.objects.filter(pk=user.pk).exists())
 
     def test_delete_failure_rolls_back_batch(self):
         user = self.abandoned()
